@@ -1325,8 +1325,8 @@ then B with Shift), Convert This Document, Convert from a Link, My Scribe
 Documents, Conversions (QUILL key, then W with Shift), Sign In, Sign Out, Open
 My Scribe Account in Browser, Options and About Scribe for Documents. Scribe
 also appears where it helps: **File > Import > Convert with Scribe for
-Documents** (the result, Word by default, opens as a new unsaved tab named
-after the document with "(Scribe)"), **File > Export > With Scribe for
+Documents** (the result, Word by default, opens as rich text in a new unsaved
+tab named after the document with "(Scribe)"), **File > Export > With Scribe for
 Documents**, **Braille > Translate with Scribe for Documents** (the BRF opens
 in the braille view), **File > My Scribe Documents** and **Window > Scribe
 Conversions**. When Import / Convert Document finds little readable text, or a
@@ -1352,7 +1352,9 @@ Accessible HTML, Word, Tagged PDF, EPUB, Kindle (MOBI), DAISY (text and
 audio), MP3 audio, Braille (BRF) or a web page for offline reading; several
 are fine, and a format already made for a document says "already made, no
 pages used". The settings below follow your choice: Language and voice (with
-the voice's speed), Braille (table, cells per line, pages), Print (large
+the voice's speed, and **Play Sample** right after the voice, which plays
+Scribe's recording of it; while it plays it reads **Stop Sample**, and Escape
+stops it without closing the window), Braille (table, cells per line, pages), Print (large
 print) and Pictures and maths. **Pages used** says how much of your Scribe
 credit this takes; the first full conversion of a document uses its pages and
 every other format of it is free. **Buy Pages** opens Scribe's purchase page.
@@ -1365,7 +1367,10 @@ starts, each new stage ("Notes.pdf, adding image descriptions."), 25, 50 and
 75 percent, and one sentence at the end, for example "Scribe for Documents
 made Notes.docx in Documents\Scribe for Documents\Notes. Word is open in
 QUILL." Results go to Documents\Scribe for Documents, one folder per
-document, and never overwrite a file. **Scribe Conversions** lists every job
+document, and never overwrite a file. Word opens in QUILL as rich text and
+braille in the braille view; MP3 and DAISY open in Quill Media Player where
+you have it (a DAISY book at its chapters), otherwise in your computer's
+player. **Scribe Conversions** lists every job
 with its formats and stage; the details field below has the percent, time
 left and the latest message. Enter opens a result; the Applications key lists
 Open Result, Open Folder, Send Next File, Enter Password, Sign In, Buy Pages,
@@ -1373,7 +1378,9 @@ Cancel Waiting, Retry, Ask for Human Review, Copy Details and Remove from List.
 **Scribe Status** (QUILL key, then U with Shift) says the current job and
 **Repeat Last Scribe Message** (QUILL key, then Y with Shift) says the last
 sentence again. A job that needs you, such as a password or a sign-in, waits
-in Scribe Conversions and says so once; no window pops up. Closing QUILL loses
+in Scribe Conversions and says so once; no window pops up. A password you
+enter there reaches whichever QUILL app is running the conversion, and a
+wrong one counts as one of three tries. Closing QUILL loses
 nothing: the next QUILL app to start finishes the job. With several files,
 each next file waits for **Send Next File**.
 
