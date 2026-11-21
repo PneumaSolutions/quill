@@ -5617,6 +5617,7 @@ live-dictation = [
 ]
 mac = [
     { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin'" },
+    { name = "pyobjc-framework-imagecapturecore", marker = "sys_platform == 'darwin'" },
 ]
 macos = [
     { name = "apple-fm-sdk", marker = "sys_platform == 'darwin'" },
@@ -5753,6 +5754,7 @@ ui = [
     { name = "psutil", marker = "sys_platform == 'win32'" },
     { name = "pynacl" },
     { name = "pywin32", marker = "sys_platform == 'win32'" },
+    { name = "websockets" },
     { name = "wx-accessible-webview" },
     { name = "wxpython" },
 ]
@@ -5854,6 +5856,7 @@ requires-dist = [
     { name = "pynacl", marker = "extra == 'ui'", specifier = ">=1.6.2" },
     { name = "pyobjc", marker = "sys_platform == 'darwin' and extra == 'macos'", specifier = ">=12.2.2" },
     { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin' and extra == 'mac'", specifier = ">=12.2.2" },
+    { name = "pyobjc-framework-imagecapturecore", marker = "sys_platform == 'darwin' and extra == 'mac'", specifier = ">=12.2.2" },
     { name = "pypdf", marker = "extra == 'office-text'", specifier = ">=6.21.4" },
     { name = "pypdf", marker = "extra == 'pdf-ocr'", specifier = ">=6.21.4" },
     { name = "pypdf", marker = "extra == 'runtime'", specifier = ">=6.21.4" },
@@ -5898,6 +5901,7 @@ requires-dist = [
     { name = "vosk", marker = "extra == 'vosk'", specifier = ">=0.3.45" },
     { name = "websockets", marker = "extra == 'live-dictation'", specifier = ">=15.0.1" },
     { name = "websockets", marker = "extra == 'runtime'", specifier = ">=15.0.1" },
+    { name = "websockets", marker = "extra == 'ui'", specifier = ">=15.0.1" },
     { name = "winrt-runtime", marker = "sys_platform == 'win32' and extra == 'ocr'", specifier = "~=4.0.3" },
     { name = "winrt-runtime", marker = "sys_platform == 'win32' and extra == 'runtime'", specifier = "~=4.0.3" },
     { name = "winrt-runtime", marker = "sys_platform == 'win32' and extra == 'windows-media'", specifier = "~=4.0.3" },
