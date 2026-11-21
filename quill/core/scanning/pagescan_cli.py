@@ -26,12 +26,17 @@ ignored. The tool runs with no console window (``CREATE_NO_WINDOW``, through
 :mod:`quill.stability.safe_subprocess`), with a timeout, and only from a worker
 thread.
 
-Where the tool is found, first match wins: the path in Options (Scanning tab,
-``scanner_tool_path``, a file or a folder), ``{app}/tools/scanner/`` beside an
+Where the tool is found, first match wins: ``{app}/tools/scanner/`` beside an
 installed QUILL (``QUILL_APP_ROOT``), ``Contents/Resources/tools/scanner/`` in
-a macOS app (``RESOURCEPATH``), ``tools/scanner/`` in a source checkout, the
-``QUILL_SCANNER_TOOL`` environment variable, then ``<QUILL
-data>/tools/scanner/``. A configured path or the variable must be absolute;
+a macOS app (``RESOURCEPATH``), ``tools/scanner/`` in a source checkout, then
+the path in Options (Scanning tab, ``scanner_tool_path``, a file or a folder),
+the ``QUILL_SCANNER_TOOL`` environment variable, then ``<QUILL
+data>/tools/scanner/``. The bundled copy comes first, so a setting can only
+stand in for a missing tool, never replace the one QUILL ships (independent
+review Q2). A configured path or the variable must be absolute and on this
+computer -- never a UNC share or a mapped network drive -- and a file must be
+named ``pagescan`` (or ``wia-scan.exe``); ``scanner_tool_path`` is a
+machine-local setting, so a portable settings import never carries it.
 ``PATH`` and the current folder are never searched, so a stray ``pagescan``
 elsewhere can never run in its place (docs/design/scribe-security-review.md).
 The scan's answer is trusted only for files inside the folder QUILL gave it,
@@ -95,10 +100,40 @@ def tool_names(platform: str | None = None) -> tuple[str, ...]:
     return (TOOL_STEM,)
 
 
+_DRIVE_REMOTE = 4  # GetDriveTypeW: a mapped network drive
+
+
+def _drive_is_remote(drive: str) -> bool:
+    """True for a mapped network drive such as ``Z:`` (Windows only)."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+
+        kind = ctypes.windll.kernel32.GetDriveTypeW(f"{drive}\\")  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001 - cannot tell: treat it as not local
+        return True
+    return int(kind) == _DRIVE_REMOTE
+
+
+def is_local_path(text: str, platform: str | None = None) -> bool:
+    """An absolute path on this computer: never a UNC share or a network drive."""
+    if text.startswith(("\\\\", "//")):
+        return False  # \\server\share, \\?\UNC\..., //server/share
+    if (platform or sys.platform) == "win32":
+        import ntpath
+
+        drive, rest = ntpath.splitdrive(text)
+        if not (len(drive) == 2 and drive[0].isalpha() and rest[:1] in ("\\", "/")):
+            return False
+        return not _drive_is_remote(drive)
+    return text.startswith("/")
+
+
 def _explicit(value: str) -> Path | None:
-    """A configured file or folder, only when it is an absolute path."""
+    """A configured file or folder, only when it is an absolute path on this computer."""
     cleaned = value.strip().strip('"')
-    if not cleaned:
+    if not cleaned or not is_local_path(cleaned):
         return None
     path = Path(cleaned)
     return path if path.is_absolute() else None
@@ -107,15 +142,15 @@ def _explicit(value: str) -> Path | None:
 def _places(configured: str, env: Mapping[str, str]) -> list[tuple[Path, bool]]:
     """Where to look, in order, each with whether it may name the file itself."""
     places: list[tuple[Path, bool]] = []
-    chosen = _explicit(configured)
-    if chosen is not None:
-        places.append((chosen, True))
     for variable in ("QUILL_APP_ROOT", "RESOURCEPATH"):
         root = env.get(variable, "").strip()
         if root and Path(root).is_absolute():
             places.append((Path(root) / "tools" / "scanner", False))
     # A run from source: the gitignored tools/scanner folder of the checkout.
     places.append((Path(__file__).resolve().parents[3] / "tools" / "scanner", False))
+    chosen = _explicit(configured)
+    if chosen is not None:
+        places.append((chosen, True))
     variable_path = _explicit(env.get(TOOL_ENV, ""))
     if variable_path is not None:
         places.append((variable_path, True))
@@ -139,7 +174,9 @@ def find_tool(
     names = tool_names(platform)
     for place, may_be_file in _places(configured, env):
         if may_be_file and place.is_file():
-            return place
+            if place.name.lower() in {n.lower() for n in names}:
+                return place
+            continue  # a file by any other name is not the scanner tool
         if place.is_dir():
             for name in names:
                 if (place / name).is_file():
@@ -345,6 +382,7 @@ __all__ = [
     "TOOL_TIMEOUT_S",
     "PagescanBackend",
     "find_tool",
+    "is_local_path",
     "parse_reply",
     "tool_names",
 ]

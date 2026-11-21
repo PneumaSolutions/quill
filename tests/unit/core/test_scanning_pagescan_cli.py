@@ -99,8 +99,11 @@ def test_the_tool_is_found_in_order(monkeypatch, tmp_path) -> None:
     win = {"platform": "win32"}
     assert pagescan_cli.find_tool(environ=env, **win) == app / "pagescan.exe"
     custom = _tool(tmp_path)
-    assert pagescan_cli.find_tool(str(custom), environ=env, **win) == custom
-    assert pagescan_cli.find_tool(str(tmp_path), environ=env, **win) == custom  # a folder too
+    # The bundled copy wins over Options (independent review Q2)...
+    assert pagescan_cli.find_tool(str(custom), environ=env, **win) == app / "pagescan.exe"
+    # ...which stands in only when there is none.
+    assert pagescan_cli.find_tool(str(custom), environ={}, **win) == custom
+    assert pagescan_cli.find_tool(str(tmp_path), environ={}, **win) == custom  # a folder too
     assert pagescan_cli.find_tool(environ={}, **win) is None
 
 
@@ -146,7 +149,8 @@ def test_the_bundled_tool_wins_over_the_environment_variable(monkeypatch, tmp_pa
     app = tmp_path / "app" / "tools" / "scanner"
     app.mkdir(parents=True)
     (app / "pagescan").write_bytes(b"x")
-    other = _tool(tmp_path)
+    other = tmp_path / "pagescan"
+    other.write_bytes(b"x")
     env = {"QUILL_APP_ROOT": str(tmp_path / "app"), pagescan_cli.TOOL_ENV: str(other)}
     assert pagescan_cli.find_tool(environ=env, platform="darwin") == app / "pagescan"
     env.pop("QUILL_APP_ROOT")
@@ -300,3 +304,32 @@ def test_a_scan_that_never_ends_is_stopped(tmp_path) -> None:
     with pytest.raises(scanning.ScanError, match="took too long"):
         backend.scan("dev", ScanOptions(), tmp_path / "o")
     assert process.killed
+
+
+def test_options_can_never_point_at_a_network_or_another_program(monkeypatch, tmp_path) -> None:
+    """Independent review Q2: a shared settings file chose which program ran."""
+    monkeypatch.setattr("quill.core.paths.app_data_dir", lambda: tmp_path / "data")
+    monkeypatch.setattr(pagescan_cli, "__file__", str(tmp_path / "x" / "y" / "z" / "w.py"))
+    win = {"platform": "win32"}
+    for unc in (r"\\server\share\pagescan.exe", "//server/share/pagescan.exe"):
+        assert pagescan_cli.find_tool(unc, environ={}, **win) is None
+        assert not pagescan_cli.is_local_path(unc, "win32")
+        assert not pagescan_cli.is_local_path(unc, "darwin")
+    renamed = tmp_path / "evil.exe"
+    renamed.write_bytes(b"MZ")
+    assert pagescan_cli.find_tool(str(renamed), environ={}, **win) is None
+    assert pagescan_cli.is_local_path(r"C:\Tools\pagescan.exe", "win32") is True
+    monkeypatch.setattr(pagescan_cli, "_drive_is_remote", lambda drive: drive.upper() == "Z:")
+    assert not pagescan_cli.is_local_path(r"Z:\Tools\pagescan.exe", "win32")  # mapped drive
+    assert not pagescan_cli.is_local_path(r"C:Tools\pagescan.exe", "win32")  # drive-relative
+
+
+def test_scanner_and_download_paths_never_travel_in_a_portable_export() -> None:
+    from quill.core.settings_registry import LOCAL_SETTINGS
+
+    assert {
+        "scanner_tool_path",
+        "scanner_device",
+        "scanner_device_name",
+        "scribe_download_folder",
+    } <= LOCAL_SETTINGS
