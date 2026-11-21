@@ -14,6 +14,10 @@ which runs the shared logic in :mod:`quill.core.scanning`:
   takes half a minute;
 * one scanner is used without asking; with several, QUILL asks once and
   remembers the choice in Settings (``scanner_device``);
+* a scanner that is listed but not responding (pagescan's per-scanner
+  ``error``) is never picked or offered; when none answers, QUILL says so
+  and offers to try again. A remembered scanner that is no longer listed
+  gives way to the only usable one, which is then remembered;
 * after each page: "Page 1 scanned. Scan another page?" -- Yes scans the
   next, No hands every page over in one go.
 
@@ -99,12 +103,16 @@ class ScanningMixin:
         """List the scanners and remember the one picked."""
 
         def _picked(scanners: list[Any]) -> None:
-            from quill.core.scanning import NO_SCANNER_SENTENCE
+            from quill.core.scanning import NO_SCANNER_SENTENCE, usable_scanners
 
             if not scanners:
                 self._scan_say_problem(NO_SCANNER_SENTENCE)
                 return
-            scanner = self._scan_ask_which(scanners, force=True)
+            usable = usable_scanners(scanners)
+            if not usable:
+                self._scan_not_responding(scanners, self.choose_scanner)
+                return
+            scanner = self._scan_ask_which(usable, force=True)
             if scanner is not None:
                 self._announce(f"QUILL will scan with {scanner.name}.")
 
@@ -129,17 +137,39 @@ class ScanningMixin:
             return
 
         def _listed(scanners: list[Any]) -> None:
-            from quill.core.scanning import NO_SCANNER_SENTENCE, ScanSession, choose_scanner
+            from quill.core.scanning import (
+                NO_SCANNER_SENTENCE,
+                ScanSession,
+                choose_scanner,
+                not_responding_sentence,
+                usable_scanners,
+            )
 
             if not scanners:
                 self._scan_say_problem(NO_SCANNER_SENTENCE, parent)
                 if on_cancel is not None:
                     on_cancel()
                 return
+            usable = usable_scanners(scanners)
+            if not usable:
+
+                def _retry() -> None:
+                    self.start_scan(on_done, parent=parent, on_cancel=on_cancel)
+
+                self._scan_not_responding(scanners, _retry, parent, on_cancel)
+                return
             remembered = self._scan_remembered_id()
             scanner = choose_scanner(scanners, remembered)
             if scanner is None:
-                scanner = self._scan_ask_which(scanners, parent=parent)
+                # The remembered scanner may be listed but not answering: say
+                # so, and ask even if only one other answered.
+                stuck = [s for s in scanners if s.id == remembered and not s.available]
+                note = not_responding_sentence(stuck) if stuck else ""
+                scanner = self._scan_ask_which(usable, parent=parent, force=bool(stuck), note=note)
+            elif remembered and scanner.id != remembered:
+                # The saved scanner is gone (pagescan now lists one physical
+                # scanner once); the only usable one takes its place.
+                self._scan_remember(scanner)
             if scanner is None:
                 self._set_status("Scan cancelled")
                 if on_cancel is not None:
@@ -161,7 +191,9 @@ class ScanningMixin:
     ) -> None:
         backend = self._scan_backend()
         self._scan_busy = True
-        self._set_status("Looking for scanners...")
+        # Spoken, not only shown: listing can take about 15 seconds, and a
+        # screen-reader user hears nothing else meanwhile.
+        self._announce("Looking for scanners...")
 
         def _run(progress_callback, cancellation_token, **_kw):
             return backend.list_scanners()
@@ -241,8 +273,13 @@ class ScanningMixin:
             return ""
         return str(getattr(settings, "scanner_device", "") or "")
 
-    def _scan_ask_which(self, scanners: list[Any], *, parent: Any = None, force: bool = False):
-        """Ask which scanner (only when there are several, unless ``force``)."""
+    def _scan_ask_which(
+        self, scanners: list[Any], *, parent: Any = None, force: bool = False, note: str = ""
+    ):
+        """Ask which scanner (only when there are several, unless ``force``).
+
+        ``note`` leads the question (why QUILL is asking again).
+        """
         from quill.core.scanning import scanner_labels
         from quill.ui.dialog_contract import apply_modal_ids
 
@@ -250,9 +287,10 @@ class ScanningMixin:
             return scanners[0]
         wx = self._wx
         labels = scanner_labels(scanners)
+        question = "Which scanner should QUILL use? QUILL remembers your choice."
         dialog = wx.SingleChoiceDialog(
             parent or self.frame,
-            "Which scanner should QUILL use? QUILL remembers your choice.",
+            f"{note} {question}" if note else question,
             "Choose Scanner",
             labels,
         )
@@ -292,6 +330,32 @@ class ScanningMixin:
         wx = self._wx
         self._set_status(message)
         self._scan_message(message, wx.ICON_INFORMATION | wx.OK, parent)
+
+    def _scan_not_responding(
+        self,
+        scanners: list[Any],
+        retry: Callable[[], None],
+        parent: Any = None,
+        on_cancel: Callable[[], None] | None = None,
+    ) -> None:
+        """Every listed scanner is unavailable: say so and offer to try again."""
+        from quill.core.scanning import not_responding_sentence
+
+        wx = self._wx
+        sentence = not_responding_sentence(scanners)
+        self._set_status(sentence)
+        answer = self._scan_message(
+            f"{sentence}\n\nTry again now?",
+            wx.ICON_INFORMATION | wx.YES_NO,
+            parent,
+            title="Scanner Not Responding",
+        )
+        if answer == wx.YES:
+            retry()
+            return
+        self._set_status("Scan cancelled")
+        if on_cancel is not None:
+            on_cancel()
 
     def _scan_failed(self, error: BaseException, parent: Any = None) -> None:
         from quill.core.scanning.base import ScanCancelled, ScanError, plain_message

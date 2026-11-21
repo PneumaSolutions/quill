@@ -46,8 +46,16 @@ def test_listing_reads_the_json_contract(tmp_path) -> None:
     assert [s.name for s in found] == ["Canon LiDE 300", "Sheet feeder", "Unread"]
     assert found[1].has_feeder and not found[0].has_feeder
     assert [s.preferred_source for s in found] == ["flatbed", "feeder", "flatbed"]
+    # A scanner whose driver did not answer is kept, but as unavailable.
+    assert [s.available for s in found] == [True, True, False]
+    assert found[2].error == "Busy."
     assert calls[0][0][1:] == ["list"]
     assert calls[0][1] == pagescan_cli.LIST_TIMEOUT_S
+
+
+def test_the_list_timeout_outlasts_the_tools_own_limit() -> None:
+    # pagescan list can take about 15 s when a driver hangs (protocol.md).
+    assert 20 < pagescan_cli.LIST_TIMEOUT_S <= 60
 
 
 def test_a_failed_list_passes_on_the_tools_sentence(tmp_path) -> None:

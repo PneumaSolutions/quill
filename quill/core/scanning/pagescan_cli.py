@@ -10,7 +10,10 @@ own main thread, which ImageCaptureCore needs. The contract (the tool's
 
 * ``pagescan list`` ->
   ``{"ok": true, "scanners": [{"id": ..., "name": ..., "sources":
-  [{"id": ..., "kind": "flatbed"|"feeder", "duplex": bool}]}]}``
+  [{"id": ..., "kind": "flatbed"|"feeder", "duplex": bool}], "error": ...}]}``.
+  A scanner whose driver did not answer is still listed, with no sources and
+  an ``error``; QUILL keeps it as unavailable (``ScannerInfo.error``). One
+  physical scanner is listed once, so an id saved earlier may be gone.
 * ``pagescan scan --device ID --source flatbed|feeder --dpi 300 --gray|--color
   --out DIR --format png`` -> ``{"ok": true, "files": [...], "error": null}``;
   writing ``cancel`` to its stdin stops a running scan, keeping finished pages.
@@ -69,7 +72,10 @@ TOOL_STEM = "pagescan"
 #: The tool's name before 2026-11-21, still found so an existing install scans.
 LEGACY_TOOL_NAME = "wia-scan.exe"
 TOOL_ENV = "QUILL_SCANNER_TOOL"
-LIST_TIMEOUT_S = 120.0  # the first look for network (eSCL) scanners can be slow
+#: ``list`` answers within about 15 seconds even when a driver hangs (its
+#: protocol.md, "Timing and unresponsive drivers"); this leaves room for a slow
+#: first start without leaving a listener waiting minutes on a stuck tool.
+LIST_TIMEOUT_S = 45.0
 SCAN_TIMEOUT_S = 900.0
 #: The tool's own limit, a little inside QUILL's, so it stops cleanly and
 #: reports the pages it saved before QUILL has to kill it.
@@ -228,6 +234,7 @@ class PagescanBackend(ScannerBackend):
                     has_feeder=SOURCE_FEEDER in kinds,
                     # Sources unread (an "error" on this scanner): assume the glass.
                     has_flatbed=SOURCE_FLATBED in kinds or not kinds,
+                    error=str(item.get("error") or "").strip(),
                 )
             )
         return scanners

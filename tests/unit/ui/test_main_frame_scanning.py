@@ -28,6 +28,7 @@ class _Dialog:
         self.args = args
         self.kwargs = kwargs
         host.dialogs.append((kind, args[2] if len(args) > 2 else kwargs.get("message", "")))
+        host.questions.append((kind, args[1] if len(args) > 1 else ""))
 
     def __enter__(self):
         return self
@@ -105,6 +106,7 @@ class _Host(ScanningMixin):
         self.preselected: list[int] = []
         self.paths: list[Path] = []
         self.dialogs: list[tuple[str, str]] = []
+        self.questions: list[tuple[str, str]] = []
         self.boxes: list[str] = []
         self.statuses: list[str] = []
         self.announcements: list[str] = []
@@ -148,7 +150,8 @@ def test_one_scanner_scans_without_asking_and_hands_over_every_page() -> None:
     assert session.page_count == 2
     assert host._task_manager.submitted == ["scan-list", "scan-page", "scan-page"]
     assert host.boxes[0].startswith("Page 1 scanned.") and "Scan another page?" in host.boxes[0]
-    assert host.announcements[:2] == [
+    assert host.announcements[:3] == [
+        "Looking for scanners...",
         "Scanning page 1. This can take up to a minute.",
         "Scanning page 2. This can take up to a minute.",
     ]
@@ -242,8 +245,112 @@ def test_choose_scanner_always_asks_and_says_the_choice() -> None:
     host = _Host()
     host.choices = [0]
     host.choose_scanner()
-    assert host.announcements == ["QUILL will scan with Flatbed One."]
+    assert host.announcements == ["Looking for scanners...", "QUILL will scan with Flatbed One."]
     assert host.settings.scanner_device == "dev-1"
+
+
+STUCK = scanning.ScannerInfo("s", "Brother ADS", error="The scanner driver did not respond.")
+
+
+def _choice_dialogs(host) -> list[str]:
+    """The question each Choose Scanner dialog asked."""
+    return [message for kind, message in host.questions if kind == "SingleChoiceDialog"]
+
+
+def test_looking_for_scanners_is_spoken() -> None:
+    host = _Host()
+    host.start_scan(lambda s: s.cleanup())
+    assert host.announcements[0] == "Looking for scanners..."
+
+
+def test_the_only_scanner_not_responding_offers_retry() -> None:
+    backend = FakeBackend([STUCK])
+    host = _Host(backend)
+    cancelled = []
+    host.box_answers = [host._wx.NO]
+    host.start_scan(
+        lambda s: pytest.fail("nothing to scan with"), on_cancel=lambda: cancelled.append(1)
+    )
+    assert host.boxes[0].startswith(
+        "The scanner Brother ADS isn't responding. Try again in a moment."
+    )
+    assert "Try again now?" in host.boxes[0]
+    assert backend.scans == [] and cancelled == [1]
+    assert host.settings.scanner_device == ""
+
+
+def test_retry_lists_again_and_scans_once_it_answers() -> None:
+    backend = FakeBackend([STUCK])
+    host = _Host(backend)
+    host.box_answers = [host._wx.YES]  # retry; "scan another?" then defaults to No
+    replies = [[STUCK], [scanning.ScannerInfo("s", "Brother ADS")]]
+    backend.list_scanners = lambda: replies.pop(0)  # type: ignore[method-assign]
+    got = []
+    host.start_scan(got.append)
+    assert host._task_manager.submitted == ["scan-list", "scan-list", "scan-page"]
+    assert backend.scans[0][0] == "s"
+    got[0].cleanup()
+
+
+def test_an_unresponsive_scanner_is_neither_picked_nor_offered() -> None:
+    backend = FakeBackend([STUCK, scanning.ScannerInfo("a", "Canon")])
+    host = _Host(backend)
+    host.start_scan(lambda s: s.cleanup())
+    assert backend.scans[0][0] == "a"
+    assert _choice_dialogs(host) == []
+    # Choose Scanner lists only the scanner that answered.
+    host.choices = [0]
+    host.choose_scanner()
+    assert host.settings.scanner_device == "a"
+    assert host.announcements[-1] == "QUILL will scan with Canon."
+
+
+def test_a_merged_away_saved_scanner_gives_way_silently_and_is_updated() -> None:
+    backend = FakeBackend([STUCK, scanning.ScannerInfo("escl-1", "HP")])
+    host = _Host(backend)
+    host.settings.scanner_device = "{6BDD}\\0001"
+    host.settings.scanner_device_name = "HP"
+    host.start_scan(lambda s: s.cleanup())
+    assert backend.scans[0][0] == "escl-1"
+    assert _choice_dialogs(host) == []
+    assert (host.settings.scanner_device, host.settings.scanner_device_name) == ("escl-1", "HP")
+
+
+def test_a_merged_away_saved_scanner_with_several_left_asks_once() -> None:
+    backend = FakeBackend([
+        scanning.ScannerInfo("a", "Canon"),
+        STUCK,
+        scanning.ScannerInfo("b", "HP"),
+    ])
+    host = _Host(backend)
+    host.settings.scanner_device = "gone"
+    host.settings.scanner_device_name = "HP"
+    host.choices = [1]  # of the usable two: Canon, HP
+    host.start_scan(lambda s: s.cleanup())
+    host.start_scan(lambda s: s.cleanup())
+    assert len(_choice_dialogs(host)) == 1
+    assert [scan[0] for scan in backend.scans] == ["b", "b"]
+    assert host.settings.scanner_device == "b"
+
+
+def test_a_saved_scanner_not_responding_asks_and_says_why() -> None:
+    backend = FakeBackend([STUCK, scanning.ScannerInfo("a", "Canon")])
+    host = _Host(backend)
+    host.settings.scanner_device = "s"
+    host.settings.scanner_device_name = "Brother ADS"
+    host.choices = [0]
+    host.start_scan(lambda s: s.cleanup())
+    asked = _choice_dialogs(host)
+    assert len(asked) == 1 and asked[0].startswith("The scanner Brother ADS isn't responding.")
+    assert backend.scans[0][0] == "a"
+
+
+def test_choose_scanner_with_none_answering_offers_retry() -> None:
+    host = _Host(FakeBackend([STUCK]))
+    host.box_answers = [host._wx.NO]
+    host.choose_scanner()
+    assert host.boxes[0].startswith("The scanner Brother ADS isn't responding.")
+    assert _choice_dialogs(host) == []
 
 
 def test_the_module_never_shows_a_modal_directly() -> None:

@@ -68,12 +68,23 @@ def plain_message(error: BaseException) -> str:
 
 @dataclass(frozen=True, slots=True)
 class ScannerInfo:
-    """One scanner, as a backend lists it."""
+    """One scanner, as a backend lists it.
+
+    ``error`` is set when the scanner is listed but its driver did not answer
+    (pagescan's per-scanner ``error``): it is shown as unavailable, never
+    chosen on its own and never offered for scanning.
+    """
 
     id: str
     name: str
     has_feeder: bool = False
     has_flatbed: bool = True
+    error: str = ""
+
+    @property
+    def available(self) -> bool:
+        """False when the scanner is listed but not responding."""
+        return not self.error
 
     @property
     def preferred_source(self) -> str:

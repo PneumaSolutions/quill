@@ -69,8 +69,28 @@ def backend_for_platform(*, tool_path: str = "", platform: str | None = None) ->
     return UnsupportedPlatformBackend()
 
 
+def usable_scanners(scanners: Sequence[ScannerInfo]) -> list[ScannerInfo]:
+    """The scanners that answered: the only ones QUILL offers or picks."""
+    return [scanner for scanner in scanners if scanner.available]
+
+
+def not_responding_sentence(scanners: Sequence[ScannerInfo]) -> str:
+    """What a listener hears when no listed scanner is answering."""
+    if len(scanners) == 1:
+        name = scanners[0].name or "Scanner"
+        return f"The scanner {name} isn't responding. Try again in a moment."
+    return "None of the scanners is responding. Try again in a moment."
+
+
 def choose_scanner(scanners: Sequence[ScannerInfo], remembered_id: str = "") -> ScannerInfo | None:
     """The scanner to use without asking, or ``None`` when the person must choose.
+
+    Only a scanner that answered is ever returned. The remembered one wins when
+    it answered. When it is no longer listed (pagescan lists one physical
+    scanner once, so a saved id can disappear) or nothing was remembered, the
+    only usable scanner is returned. A remembered scanner that is listed but
+    not responding gives ``None``: switching to another without asking would
+    surprise. Also ``None`` when none answered at all.
 
     Raises :class:`NoScannerFound` when there is none at all.
     """
@@ -79,9 +99,10 @@ def choose_scanner(scanners: Sequence[ScannerInfo], remembered_id: str = "") -> 
     if remembered_id:
         for scanner in scanners:
             if scanner.id == remembered_id:
-                return scanner
-    if len(scanners) == 1:
-        return scanners[0]
+                return scanner if scanner.available else None
+    usable = usable_scanners(scanners)
+    if len(usable) == 1:
+        return usable[0]
     return None
 
 
@@ -235,8 +256,10 @@ __all__ = [
     "documents_folder",
     "folder_is_writable",
     "images_to_pdf",
+    "not_responding_sentence",
     "page_count_sentence",
     "scan_name",
     "scanner_labels",
     "unique_path",
+    "usable_scanners",
 ]

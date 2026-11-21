@@ -30,8 +30,10 @@ from quill.core.scanning.session import (
     backend_for_platform,
     choose_scanner,
     images_to_pdf,
+    not_responding_sentence,
     page_count_sentence,
     scanner_labels,
+    usable_scanners,
 )
 
 __all__ = [
@@ -54,6 +56,8 @@ __all__ = [
     "backend_for_platform",
     "choose_scanner",
     "images_to_pdf",
+    "not_responding_sentence",
     "page_count_sentence",
     "scanner_labels",
+    "usable_scanners",
 ]

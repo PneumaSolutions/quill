@@ -32,6 +32,34 @@ def test_a_remembered_scanner_that_is_gone_asks_again() -> None:
     assert scanning.choose_scanner([ONE], remembered_id="gone") is ONE
 
 
+STUCK = scanning.ScannerInfo("c", "Brother ADS", error="The scanner driver did not respond.")
+
+
+def test_a_scanner_that_is_not_responding_is_never_picked() -> None:
+    assert not STUCK.available
+    assert scanning.usable_scanners([STUCK, ONE]) == [ONE]
+    assert scanning.choose_scanner([STUCK]) is None
+    assert scanning.choose_scanner([STUCK, ONE]) is ONE  # the only usable one
+    assert scanning.choose_scanner([STUCK, ONE, TWO]) is None
+
+
+def test_a_remembered_scanner_that_is_not_responding_asks() -> None:
+    # Switching to another scanner without asking would surprise.
+    assert scanning.choose_scanner([STUCK, ONE], remembered_id="c") is None
+
+
+def test_a_merged_away_scanner_gives_way_to_the_only_usable_one() -> None:
+    assert scanning.choose_scanner([STUCK, ONE], remembered_id="gone") is ONE
+    assert scanning.choose_scanner([STUCK], remembered_id="gone") is None
+
+
+def test_the_not_responding_sentence_names_a_single_scanner() -> None:
+    assert scanning.not_responding_sentence([STUCK]) == (
+        "The scanner Brother ADS isn't responding. Try again in a moment."
+    )
+    assert "None of the scanners" in scanning.not_responding_sentence([STUCK, STUCK])
+
+
 def test_repeated_names_are_told_apart() -> None:
     same = [scanning.ScannerInfo("1", "HP"), scanning.ScannerInfo("2", "HP")]
     assert scanning.scanner_labels(same) == ["HP", "HP (2)"]
