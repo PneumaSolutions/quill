@@ -56,6 +56,7 @@ class _FakeWx(SimpleNamespace):
     NO = 5104
     OK = 4
     YES_NO = 10
+    NO_DEFAULT = 128
     ICON_ERROR = 512
     ICON_INFORMATION = 2048
     ICON_QUESTION = 1024
@@ -356,3 +357,84 @@ def test_choose_scanner_with_none_answering_offers_retry() -> None:
 def test_the_module_never_shows_a_modal_directly() -> None:
     source = Path(main_frame_scanning.__file__).read_text(encoding="utf-8")
     assert ".ShowModal(" not in source
+
+
+# ------------------------------------------------------------------ independent review
+
+
+def test_escape_on_the_chooser_asks_before_discarding_the_pages() -> None:
+    """Q19: one stray Escape used to delete every scanned page without a word."""
+    host = _Host()
+    host.modal_answers = [host._wx.ID_CANCEL, host._wx.ID_OK]  # Escape, then a choice
+    host.box_answers = [host._wx.NO, host._wx.NO]  # one page; then "Discard?" No
+    host.choices = [0]  # back at the chooser: Read the text (OCR)
+    host.scan_pages()
+    assert any(b.startswith("Discard the 1 page you scanned?") for b in host.boxes)
+    assert len(host.ocr) == 1 and host.ocr[0].exists()
+
+
+def test_discarding_needs_a_yes() -> None:
+    host = _Host()
+    host.modal_answers = [host._wx.ID_CANCEL]
+    host.box_answers = [host._wx.NO, host._wx.YES]  # one page; "Discard?" Yes
+    got = []
+    real = host._scan_offer_uses
+    host._scan_offer_uses = lambda s: (got.append(s), real(s))  # type: ignore[method-assign]
+    host.scan_pages()
+    assert host.statuses[-1] == "The scanned pages were not kept."
+    assert not got[0].folder.exists()
+
+
+def test_cancelling_the_save_dialog_goes_back_to_the_choices(tmp_path) -> None:
+    pytest.importorskip("PIL")
+    host = _Host()
+    host._document_is_read_only = lambda: True  # type: ignore[attr-defined]
+    labels = [label for key, label in main_frame_scanning.SCAN_USES if key != "insert"]
+    pdf = labels.index("Save as a PDF")
+    # Chooser OK (PDF), Save dialog Cancel, chooser OK (PDF), Save dialog OK.
+    host.modal_answers = [host._wx.ID_OK, host._wx.ID_CANCEL, host._wx.ID_OK, host._wx.ID_OK]
+    host.choices = [pdf, pdf]
+    host.paths = [tmp_path / "kept.pdf"]
+    host.scan_pages()
+    assert (tmp_path / "kept.pdf").read_bytes().startswith(b"%PDF")
+
+
+def test_a_failure_while_saving_is_said_and_keeps_the_pages(tmp_path, monkeypatch) -> None:
+    host = _Host()
+    host._document_is_read_only = lambda: True  # type: ignore[attr-defined]
+    labels = [label for key, label in main_frame_scanning.SCAN_USES if key != "insert"]
+    host.choices = [labels.index("Save as pictures (PNG)"), 0]
+    host.paths = [tmp_path]
+    monkeypatch.setattr(
+        scanning.ScanSession,
+        "copy_images_to",
+        lambda self, folder, stem: (_ for _ in ()).throw(OSError(28, "No space left")),
+    )
+    host.scan_pages()
+    assert any("No space left" in b for b in host.boxes)
+    assert len(host.ocr) == 1  # back at the chooser, the pages still there
+
+
+def test_a_scanner_with_a_feeder_and_a_glass_asks_which() -> None:
+    """Q20: a combined scanner could never use its feeder."""
+    both = scanning.ScannerInfo("dev-1", "Office Scanner", has_feeder=True, has_flatbed=True)
+    backend = FakeBackend([both], pages_per_scan=3)
+    host = _Host(backend)
+    host.choices = [1]  # the feeder
+    got = []
+    host.start_scan(got.append)
+    assert backend.sources == [scanning.SOURCE_FEEDER]
+    assert any("scan from" in q.lower() for _k, q in host.questions)
+    assert host.boxes[0].startswith("3 pages scanned from the feeder, 3 pages in all.")
+    assert "Scanning the pages in the feeder." in host.announcements[1]
+    got[0].cleanup()
+    host.choices = [0]
+    host.start_scan(got.append)
+    assert host.preselected[-1] == 1  # the last answer is offered first
+    assert backend.sources[-1] == scanning.SOURCE_FLATBED
+
+
+def test_a_flatbed_only_scanner_never_asks_where() -> None:
+    host = _Host()
+    host.start_scan(lambda s: s.cleanup())
+    assert not [d for d in host.dialogs if d[0] == "SingleChoiceDialog"]

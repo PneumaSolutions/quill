@@ -160,10 +160,13 @@ class ScanSession:
         options: ScanOptions,
         *,
         folder: Path | None = None,
+        source: str = "",
     ) -> None:
         self.backend = backend
         self.scanner = scanner
         self.options = options
+        #: The glass or the feeder: the caller's choice, else the scanner's own.
+        self.source = source or scanner.preferred_source
         self.folder = folder or Path(tempfile.mkdtemp(prefix="quill-scan-"))
         self.pages: list[Path] = []
 
@@ -174,7 +177,7 @@ class ScanSession:
             self.scanner.id,
             self.options,
             run,
-            source=self.scanner.preferred_source,
+            source=self.source,
             cancel_requested=cancel_requested,
         )
         self.pages.extend(new)

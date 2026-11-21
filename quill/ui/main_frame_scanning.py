@@ -18,8 +18,13 @@ which runs the shared logic in :mod:`quill.core.scanning`:
   ``error``) is never picked or offered; when none answers, QUILL says so
   and offers to try again. A remembered scanner that is no longer listed
   gives way to the only usable one, which is then remembered;
+* a scanner with both a feeder and a glass asks which to scan from (the
+  feeder is how most people scan many pages; independent review Q20);
 * after each page: "Page 1 scanned. Scan another page?" -- Yes scans the
-  next, No hands every page over in one go.
+  next, No hands every page over in one go;
+* the scanned pages are never thrown away by a stray Escape: cancelling a
+  later question goes back to "What would you like to do?", and leaving that
+  asks "Discard the scanned pages?" first (independent review Q19).
 
 Wiring expectations from MainFrame: ``_wx``, ``frame``, ``settings``,
 ``_task_manager``, ``_show_modal_dialog``, ``_show_message_box``,
@@ -51,6 +56,7 @@ class ScanningMixin:
     """``file.scan`` and ``file.scan_choose_scanner``, plus :meth:`start_scan`."""
 
     _scan_busy: bool = False
+    _scan_last_source: str = ""
 
     # ------------------------------------------------------------- wiring
 
@@ -175,9 +181,17 @@ class ScanningMixin:
                 if on_cancel is not None:
                     on_cancel()
                 return
+            source = self._scan_ask_source(scanner, parent)
+            if not source:
+                self._set_status("Scan cancelled")
+                if on_cancel is not None:
+                    on_cancel()
+                return
             from quill.core.scanning.settings_fields import scan_options
 
-            session = ScanSession(self._scan_backend(), scanner, scan_options(self.settings))
+            session = ScanSession(
+                self._scan_backend(), scanner, scan_options(self.settings), source=source
+            )
             self._scan_next_page(session, on_done, parent, on_cancel)
 
         self._scan_list(_listed, parent=parent, on_cancel=on_cancel)
@@ -217,26 +231,39 @@ class ScanningMixin:
         parent: Any,
         on_cancel: Callable[[], None] | None,
     ) -> None:
+        from quill.core.scanning import SOURCE_FEEDER
+
         number = session.page_count + 1
+        feeder = session.source == SOURCE_FEEDER
         self._scan_busy = True
-        self._announce(f"Scanning page {number}. This can take up to a minute.")
+        if feeder:
+            self._announce("Scanning the pages in the feeder. This can take a few minutes.")
+        else:
+            self._announce(f"Scanning page {number}. This can take up to a minute.")
 
         def _run(progress_callback, cancellation_token, **_kw):
             return session.scan_next(cancel_requested=cancellation_token.is_cancelled)
 
-        def _scanned(_op, _new) -> None:
+        def _scanned(_op, new) -> None:
             from quill.core.scanning import page_count_sentence
 
             self._scan_busy = False
             wx = self._wx
             count = session.page_count
-            answer = self._scan_message(
-                f"Page {count} scanned. Put the next page on the scanner and choose Yes "
-                "to scan it, or No if you are done.\n\nScan another page?",
-                wx.ICON_QUESTION | wx.YES_NO,
-                parent,
-                title="Scan Another Page?",
-            )
+            if feeder:
+                question = (
+                    f"{page_count_sentence(len(new or ()))} scanned from the feeder, "
+                    f"{page_count_sentence(count)} in all. Load more pages and choose Yes "
+                    "to scan them, or No if you are done.\n\nScan more pages?"
+                )
+                title = "Scan More Pages?"
+            else:
+                question = (
+                    f"Page {count} scanned. Put the next page on the scanner and choose Yes "
+                    "to scan it, or No if you are done.\n\nScan another page?"
+                )
+                title = "Scan Another Page?"
+            answer = self._scan_message(question, wx.ICON_QUESTION | wx.YES_NO, parent, title=title)
             if answer == wx.YES:
                 self._scan_next_page(session, on_done, parent, on_cancel)
                 return
@@ -306,6 +333,38 @@ class ScanningMixin:
             dialog.Destroy()
         self._scan_remember(scanner)
         return scanner
+
+    def _scan_ask_source(self, scanner: Any, parent: Any = None) -> str:
+        """The glass or the feeder: asked only when the scanner has both.
+
+        ``""`` when the person cancelled. The last answer is offered first.
+        """
+        from quill.core.scanning import SOURCE_FEEDER, SOURCE_FLATBED
+        from quill.ui.dialog_contract import apply_modal_ids
+
+        if not (scanner.has_feeder and scanner.has_flatbed):
+            return str(scanner.preferred_source)
+        wx = self._wx
+        sources = [SOURCE_FLATBED, SOURCE_FEEDER]
+        labels = [
+            "The glass (flatbed): one page at a time",
+            "The document feeder: every page loaded in it",
+        ]
+        title = "Scan From"
+        dialog = wx.SingleChoiceDialog(
+            parent or self.frame, f"Where should {scanner.name} scan from?", title, labels
+        )
+        apply_modal_ids(dialog, affirmative_id=wx.ID_OK, escape_id=wx.ID_CANCEL)
+        try:
+            last = self._scan_last_source
+            dialog.SetSelection(sources.index(last) if last in sources else 0)
+            if self._show_modal_dialog(dialog, title) != wx.ID_OK:
+                return ""
+            picked = sources[int(dialog.GetSelection())]
+        finally:
+            dialog.Destroy()
+        self._scan_last_source = picked
+        return picked
 
     def _scan_remember(self, scanner: Any) -> None:
         settings = getattr(self, "settings", None)
@@ -390,17 +449,34 @@ class ScanningMixin:
         try:
             dialog.SetSelection(0)
             if self._show_modal_dialog(dialog, _TITLE) != wx.ID_OK:
-                session.cleanup()
-                self._set_status("The scanned pages were not kept.")
-                return
-            use = uses[int(dialog.GetSelection())][0]
+                use = ""
+            else:
+                use = uses[int(dialog.GetSelection())][0]
         finally:
             dialog.Destroy()
+        if not use:
+            self._scan_discard_or_return(session)
+            return
         self._scan_use(session, use)
 
-    def _scan_use(self, session: Any, use: str) -> None:
-        from quill.core.scanning import ScanError
+    def _scan_discard_or_return(self, session: Any) -> None:
+        """Escape on the chooser: ask before the pages go; No goes back to it."""
+        from quill.core.scanning import page_count_sentence
 
+        wx = self._wx
+        answer = self._show_message_box(
+            f"Discard the {page_count_sentence(session.page_count)} you scanned? "
+            "They cannot be got back.",
+            "Discard Scanned Pages?",
+            wx.ICON_QUESTION | wx.YES_NO | wx.NO_DEFAULT,
+        )
+        if answer == wx.YES:
+            session.cleanup()
+            self._set_status("The scanned pages were not kept.")
+            return
+        self._scan_offer_uses(session)
+
+    def _scan_use(self, session: Any, use: str) -> None:
         try:
             if use == USE_OCR:
                 # QUILL's own on-device OCR, the route Import / Convert takes
@@ -414,11 +490,14 @@ class ScanningMixin:
                 self._scan_save_pdf(session)
             elif use == USE_IMAGES:
                 self._scan_save_images(session)
-        except ScanError as exc:
+        except Exception as exc:  # noqa: BLE001 - said; the pages are kept
+            # A full disk while copying pictures, or Pillow failing on a page,
+            # is said like a scanner error, and the pages stay: back to the
+            # chooser rather than losing them.
             from quill.core.scanning.base import plain_message
 
             self._scan_say_problem(plain_message(exc))
-            session.cleanup()
+            self._scan_offer_uses(session)
 
     def _scan_stem(self) -> str:
         from quill.core.scanning.session import scan_name
@@ -448,8 +527,7 @@ class ScanningMixin:
             style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
         ) as dialog:
             if self._show_modal_dialog(dialog, _TITLE) != wx.ID_OK:
-                session.cleanup()
-                self._set_status("The scanned pages were not saved.")
+                self._scan_offer_uses(session)  # back to the choices; nothing is lost
                 return
             target = Path(dialog.GetPath())
         if target.suffix.lower() != ".pdf":
@@ -469,8 +547,7 @@ class ScanningMixin:
             style=wx.DD_DEFAULT_STYLE,
         ) as dialog:
             if self._show_modal_dialog(dialog, _TITLE) != wx.ID_OK:
-                session.cleanup()
-                self._set_status("The scanned pages were not saved.")
+                self._scan_offer_uses(session)  # back to the choices; nothing is lost
                 return
             folder = Path(dialog.GetPath())
         written = session.copy_images_to(folder, self._scan_stem())
