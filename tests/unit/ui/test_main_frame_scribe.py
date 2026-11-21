@@ -599,3 +599,83 @@ def test_needs_sign_in_offers_retry_and_sign_in() -> None:
     window.host = SimpleNamespace(scribe_sign_in=lambda: None)
     labels = [label for label, _a in window._commands(_job(state=q.NEEDS_SIGNIN))]
     assert "&Sign In..." in labels and "&Retry" in labels
+
+
+def test_a_stale_my_scribe_documents_list_is_never_shown() -> None:
+    """Q22: a slow Documents list landing after Trash was chosen showed live
+    documents with Delete Forever."""
+    from quill.ui.scribe_documents_dialog import ScribeDocumentsDialog
+
+    dialog = object.__new__(ScribeDocumentsDialog)
+    dialog.show = SimpleNamespace(GetSelection=lambda: 1)  # Trash is chosen now
+    dialog._load_seq = 2
+
+    class _Untouchable:
+        def __getattr__(self, name):
+            raise AssertionError(f"a stale result touched the window ({name})")
+
+    dialog.pages = dialog.list = dialog.buttons = _Untouchable()
+    dialog._loaded([SimpleNamespace(title="Live")], 5, focus_index=None, seq=1, trash=False)
+    dialog._loaded([SimpleNamespace(title="Live")], 5, focus_index=None, seq=2, trash=False)
+    dialog._failed(RuntimeError("old"), seq=1)
+
+
+def test_dates_in_my_scribe_documents_are_spoken_dates() -> None:
+    from quill.ui.scribe_documents_dialog import spoken_date
+
+    assert spoken_date("2026-11-21T09:00:00Z") == "November 21, 2026"
+    assert spoken_date("soon") == "soon"
+
+
+def test_open_preview_is_offered_when_pages_run_out_and_keys_are_unique() -> None:
+    from quill.ui.scribe_conversions_window import ScribeConversionsWindow
+
+    window = object.__new__(ScribeConversionsWindow)
+    window.host = SimpleNamespace(scribe_sign_in=lambda: None)
+    for state in (q.NEEDS_PAGES, q.FAILED, q.DONE, q.NEEDS_SIGNIN):
+        job = _job(state=state, document_id="d1", results=["x.docx"])
+        labels = [label for label, _a in window._commands(job)]
+        keys = [label[label.index("&") + 1].lower() for label in labels]
+        assert len(keys) == len(set(keys)), labels  # Q38: one key, one command
+        if state == q.NEEDS_PAGES:
+            assert "Open &Preview" in labels
+
+
+def test_removing_a_running_job_says_what_it_means(scribe) -> None:
+    from quill.ui.scribe_conversions_window import ScribeConversionsWindow
+
+    said = []
+    [first, second, third] = q.JobQueue().add(
+        [_job(state=q.DONE), _job(state=q.CONVERTING), _job(state=q.DONE)], batch_allowed=True
+    )
+    window = object.__new__(ScribeConversionsWindow)
+    window.jobs_store = q.JobQueue()
+    window.host = SimpleNamespace(_announce=said.append, scribe_app_name=lambda: "QUILL")
+    selected = {"index": 1}
+    window._rows = [first.id, second.id, third.id]
+    window.wx = SimpleNamespace(LIST_STATE_SELECTED=2, LIST_STATE_FOCUSED=1)
+    window.list = SimpleNamespace(
+        GetFirstSelected=lambda: selected["index"],
+        GetItemCount=lambda: len(window._rows),
+        SetItemState=lambda i, s, m: selected.__setitem__("index", i),
+    )
+    window.refresh = lambda force=False: setattr(
+        window, "_rows", [j.id for j in window.jobs_store.jobs()]
+    )
+    window.remove()
+    assert said == [
+        "QUILL stopped waiting for Notes.pdf. Scribe will still finish it and may use "
+        "pages; it stays in My Scribe Documents."
+    ]
+    assert selected["index"] == 1  # the next row, not the first
+
+
+def test_open_in_quill_without_a_word_version_shows_the_convert_dialog(scribe) -> None:
+    """Q35: it used to queue a conversion the person never saw described."""
+    from quill.core.scribe.client import RemoteDocument
+
+    host = _Host()
+    _ConvertDialog.last = None
+    host.scribe_open_existing(RemoteDocument(id="d1", title="Notes"))
+    assert _ConvertDialog.last is not None
+    assert _ConvertDialog.last.kwargs["reuse_title"] == "Notes"

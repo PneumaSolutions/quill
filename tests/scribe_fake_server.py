@@ -20,6 +20,7 @@ import json
 import logging
 import re
 import threading
+import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -75,6 +76,9 @@ class FakeDocument:
     trashed: bool = False
     settings: dict[str, Any] = field(default_factory=dict)
     data: bytes = b""
+    inserted_at: str = field(
+        default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    )
 
 
 class FakeScribe:
@@ -379,7 +383,7 @@ def _doc_json(doc: FakeDocument) -> dict[str, Any]:
         "id": doc.id,
         "title": doc.title,
         "page_count": doc.page_count,
-        "inserted_at": "2026-11-21T09:00:00Z",
+        "inserted_at": doc.inserted_at,
         "is_password_needed": not doc.unlocked,
         "outputs": [_output_json(f, s) for f, s in doc.outputs.items()],
     }

@@ -51,8 +51,6 @@ from quill.core.scribe.channel import DocumentChannel
 from quill.core.scribe.client import ScribeClient
 from quill.core.scribe.library import Library, title_stem
 from quill.core.scribe.model import (
-    DocumentSettings,
-    ScribeBusy,
     ScribeCancelled,
     ScribeError,
     ScribeGone,
@@ -67,6 +65,7 @@ from quill.core.scribe.runner_parts import (
     _duration,
     _mark_done,
     _password_given,
+    _remove_private_copy,
     _set_fields,
     _set_state,
     _unzip_page,
@@ -75,7 +74,9 @@ from quill.core.scribe.runner_parts import (
     hand_over_password,
     take_handed_password,
 )
-from quill.core.scribe.runner_steps import ConversionSteps
+from quill.core.scribe.runner_steps import (
+    ConversionSteps,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +147,7 @@ class QueueRunner(ConversionSteps):
         self._stages_said: dict[str, set[str]] = {}
         self._resumed_done: list[q.Job] = []
         self._lost = threading.Event()
+        self._handed: set[str] = set()  # passwords this app left for another app
         self._slowed_said: set[str] = set()
         self._next_signin_check = 0.0
 
@@ -160,6 +162,11 @@ class QueueRunner(ConversionSteps):
             self._thread.start()
 
     def stop(self) -> None:
+        # A password this app left for another app and nobody collected goes
+        # with it: it must not stay in the vault after the app closes (Q24).
+        for job_id in list(self._handed):
+            take_handed_password(self.client.store, job_id)
+        self._handed.clear()
         self._stop.set()
         self._wake.set()
         if self._thread is not None:
@@ -196,6 +203,7 @@ class QueueRunner(ConversionSteps):
         holder = self.lock.holder()
         if holder and holder.get("pid") != self.lock.pid:
             hand_over_password(self.client.store, job_id, password)
+            self._handed.add(job_id)
         else:
             self._passwords[job_id] = password
         # Only a job waiting for its password goes on: a later file of a batch
@@ -237,6 +245,7 @@ class QueueRunner(ConversionSteps):
     def run_once(self) -> bool:
         """Run the next job if this app may. True when a job was worked on."""
         pid = self.lock.pid
+        self._deliver_results()
         if self.jobs.next_runnable(pid=pid, now=self._now()) is None:
             if self.lock.held_here():
                 self.lock.beat()
@@ -263,6 +272,29 @@ class QueueRunner(ConversionSteps):
             if not self._lost.is_set():
                 self.jobs.release(job.id, pid)
         return True
+
+    def _deliver_results(self) -> None:
+        """Say each finished job once, in the app that started it.
+
+        The app that started a job announces and opens its result even when
+        another app ran it. Only when that app has closed does the app running
+        the queue say it, as "finished while QUILL was closed" (independent
+        review Q14: it used to say that for an app that was still open).
+        """
+        try:
+            done = [j for j in self.jobs.jobs() if j.state == q.DONE and not j.delivered]
+        except (OSError, q.QueueUnreadable):
+            return
+        for job in done:
+            mine = job.owner_pid == self.lock.pid
+            if not mine and (q.pid_alive(job.owner_pid) or not self.lock.held_here()):
+                continue
+            try:
+                claimed = self.jobs.mark_delivered(job.id)
+            except (OSError, q.QueueUnreadable):
+                return
+            if claimed is not None:
+                self._result(claimed)
 
     def _maybe_resume_after_sign_in(self) -> None:
         """Another app may have signed in: look now and then while jobs wait for it."""
@@ -330,7 +362,8 @@ class QueueRunner(ConversionSteps):
                 job,
                 q.NEEDS_PAGES,
                 exc,
-                f"{exc.message} You can still read the first two pages: Open Preview.",
+                f"{exc.message} You can still read the first two pages: Open Preview, "
+                "in Scribe Conversions.",
             )
         except ScribeGone as exc:
             self._finish_badly(job, q.GONE, exc, f"{job.name} is no longer in your Scribe account.")
@@ -415,30 +448,6 @@ class QueueRunner(ConversionSteps):
         self._changed(fresh)
         return fresh
 
-    def _upload(self, job: q.Job) -> None:
-        self._check_owner(job)
-        self._update(job, lambda j: _set_state(j, q.UPLOADING, f"Sending {j.name}."))
-        self._say("start", f"Scribe for Documents is converting {job.name}.", job)
-        password = self._password(job.id)
-        while True:
-            try:
-                if job.source_url:
-                    document_id = self.client.create_from_url(job.source_url, password)
-                else:
-                    document_id = self.client.create_from_file(Path(job.source_path), password)
-                break
-            except ScribeBusy:
-                job = self._slow_down(job, then=q.UPLOADING)
-        self._check_owner(job)
-        self._update(job, lambda j: setattr(j, "document_id", document_id))
-
-    def _send_settings(self, job: q.Job) -> None:
-        settings = DocumentSettings.from_json(job.settings)
-        self.client.set_document_settings(job.document_id, settings)
-        if job.save_account_defaults:
-            self.client.set_account_defaults(settings)
-        self._update(job, lambda j: setattr(j, "settings", None))
-
     def _download(self, job: q.Job, format_id: str) -> q.Job:
         self._check_owner(job)
         job = self._update(
@@ -478,7 +487,8 @@ class QueueRunner(ConversionSteps):
         self._forget_password(job.id)
         self._stages_said.pop(job.id, None)
         self._slowed_said.discard(job.id)
-        self._result(job)
+        _remove_private_copy(job)
+        self._deliver_results()
 
     def _password_refused(self, job: q.Job, exc: ScribePasswordNeeded) -> None:
         """``password_required`` waits for the person; a wrong password counts

@@ -137,9 +137,10 @@ def test_q1_an_app_that_lost_the_lock_stops_before_its_next_step(
     monkeypatch.setattr(a.client, "outputs", outputs_then_freeze)
     assert a.run_once() is True
     assert took_over.is_set()
-    assert b_results and b_results[0].state == q.DONE
+    done = a.jobs.get(job.id)
+    assert done.state == q.DONE and not b_results  # B ran it; A, its starter, says it
     assert fake.started == ["docx"]  # A never started the conversion it lost
-    assert len(_files(b_results[0])) == 1
+    assert len(_files(done)) == 1
 
 
 def test_q1_a_claimed_job_is_not_offered_to_another_app(tmp_path) -> None:
@@ -678,3 +679,389 @@ def test_q16_the_ai_off_reason_is_in_the_field_tab_reaches() -> None:
     assert AI_OFF_NOTE in consent_text([source], ai_off=True)
     assert AI_OFF_NOTE not in consent_text([source])
     assert AI_OFF_NOTE in consent_text([], reuse_title="Notes", ai_off=True)
+
+
+# ------------------------------------------------------------------ Q14: who says the result
+
+
+def _dead_pid() -> int:
+    import subprocess
+    import sys
+
+    process = subprocess.Popen([sys.executable, "-c", "pass"])
+    process.wait()
+    return process.pid
+
+
+def test_q14_a_job_started_in_an_open_app_is_said_there_not_as_closed(
+    fake, store, tmp_path
+) -> None:
+    starter_results, runner_results = [], []
+    starter = _runner(fake, store, tmp_path, results=starter_results)  # this process
+    other = _runner(fake, store, tmp_path, results=runner_results, pid=starter.lock.pid + 1)
+    starter.jobs.add([_job(tmp_path, "docx")])  # owner_pid: this (live) process
+    assert other.run_once() is True
+    assert runner_results == []  # the app that ran it does not say it...
+    starter._deliver_results()
+    assert len(starter_results) == 1 and starter_results[0].delivered  # ...its starter does
+    starter._deliver_results()
+    assert len(starter_results) == 1  # once
+
+
+def test_q14_a_job_whose_app_closed_is_said_by_the_runner(fake, store, tmp_path) -> None:
+    results = []
+    runner = _runner(fake, store, tmp_path, results=results)
+    runner.jobs.add([_job(tmp_path, "docx", owner_pid=_dead_pid())])
+    runner.run_once()
+    assert len(results) == 1 and results[0].resumed
+
+
+def test_q14_pid_alive() -> None:
+    import os
+
+    assert q.pid_alive(os.getpid()) and not q.pid_alive(_dead_pid()) and not q.pid_alive(0)
+
+
+# ------------------------------------------------------------------ Q18: large files
+
+
+def test_q18_the_upload_is_streamed_from_disk_with_its_exact_length(tmp_path) -> None:
+    from quill.core.scribe import http as scribe_http
+
+    big = tmp_path / "Big.pdf"
+    big.write_bytes(bytes(range(256)) * 4096)  # 1 MB
+    upload = scribe_http.MultipartFile({"document[password]": "pw"}, "document[file]", big)
+    stream = upload.open()
+    pieces = []
+    while chunk := stream.read(65536):
+        pieces.append(chunk)
+    stream.close()
+    body = b"".join(pieces)
+    assert len(body) == upload.length
+    assert max(len(p) for p in pieces) <= 1024 * 1024  # never the whole file in one read
+    boundary = upload.content_type.split("boundary=")[1]
+    assert body.startswith(f"--{boundary}".encode()) and body.endswith(
+        f"--{boundary}--\r\n".encode()
+    )
+    assert big.read_bytes() in body and b'name="document[password]"\r\n\r\npw' in body
+
+
+def test_q18_the_fake_server_reads_a_streamed_upload(fake, store, tmp_path) -> None:
+    source = tmp_path / "Notes.pdf"
+    source.write_bytes(b"%PDF-1.4 " + b"x" * 300_000)
+    document_id = ScribeClient(store).create_from_file(source, "pw")
+    assert document_id and fake.uploads[-1] == {"title": "Notes.pdf", "password": "pw", "url": None}
+
+
+def test_q18_a_large_pdf_is_described_without_reading_it_whole(tmp_path, monkeypatch) -> None:
+    from quill.core.scribe import consent
+
+    monkeypatch.setattr(consent, "_WHOLE_READ_BYTES", 1000)
+    monkeypatch.setattr(consent, "_EDGE_BYTES", 100)
+    pdf = tmp_path / "Scan.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n" + b"0" * 5000 + b"\ntrailer << /Encrypt 5 0 R >>\n")
+    reads = []
+    real_open = open
+
+    def counting_open(path, mode="r", *a, **k):
+        handle = real_open(path, mode, *a, **k)
+        if str(path) == str(pdf):
+            real_read = handle.read
+
+            def handle_read(n=-1):
+                data = real_read(n)
+                reads.append(len(data))
+                return data
+
+            return _Wrapped(handle, handle_read)
+        return handle
+
+    monkeypatch.setattr("builtins.open", counting_open)
+    info = consent.describe_source(pdf)
+    assert info.encrypted is True
+    assert sum(reads) <= 200  # only the two 100-byte edges, not the 5 KB file
+
+
+class _Wrapped:
+    def __init__(self, handle, read):
+        self._h, self.read = handle, read
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        self._h.close()
+
+    def seek(self, *a):
+        return self._h.seek(*a)
+
+
+def test_q18_many_scanned_pages_become_one_pdf_a_page_at_a_time(tmp_path) -> None:
+    pytest.importorskip("PIL")
+    pytest.importorskip("pypdf")
+    from PIL import Image
+    from pypdf import PdfReader
+
+    from quill.core.scanning.session import images_to_pdf
+
+    pages = []
+    for number in range(3):
+        path = tmp_path / f"p{number}.png"
+        Image.new("L", (40, 60), color=number * 60).save(path)
+        pages.append(path)
+    target = images_to_pdf(pages, tmp_path / "out" / "Scan.pdf", dpi=100)
+    assert len(PdfReader(str(target)).pages) == 3
+    assert not (tmp_path / "out" / "Scan.pdf.part").exists()
+
+
+# ------------------------------------------------------------------ Q24: passwords
+
+
+def test_q24_a_handed_over_password_expires_unread(store, monkeypatch) -> None:
+    from quill.core.scribe import runner_parts
+
+    runner_parts.hand_over_password(store, "job1", "hunter2")
+    assert runner_parts.take_handed_password(store, "job1") == "hunter2"
+    assert runner_parts.take_handed_password(store, "job1") is None  # read once
+    runner_parts.hand_over_password(store, "job2", "hunter2")
+    later = time.time() + runner_parts.HANDOVER_TTL_S + 1
+    monkeypatch.setattr(runner_parts.time, "time", lambda: later)
+    assert runner_parts.take_handed_password(store, "job2") is None  # too old: never used
+    assert store.manager.get(runner_parts._handover_ref("job2")) is None  # and wiped
+
+
+def test_q24_a_closing_app_wipes_the_passwords_it_left_uncollected(
+    fake, store, tmp_path, caplog
+) -> None:
+    import logging
+
+    from quill.core.scribe import runner_parts
+
+    caplog.set_level(logging.DEBUG)
+    holder = q.RunnerLock(tmp_path / "shared")
+    holder.pid = 999_999
+    holder.acquire()  # another app runs the queue
+    giver = _runner(fake, store, tmp_path)
+    [job] = giver.jobs.add([_job(tmp_path, "docx", state=q.NEEDS_PASSWORD)])
+    giver.give_password(job.id, "s3cret-pw")
+    assert store.manager.get(runner_parts._handover_ref(job.id)) is not None
+    giver.stop()
+    assert store.manager.get(runner_parts._handover_ref(job.id)) is None
+    assert "s3cret-pw" not in caplog.text
+    assert "s3cret-pw" not in (tmp_path / "shared" / "queue.json").read_text(encoding="utf-8")
+
+
+# ------------------------------------------------------------------ Q25: offline
+
+
+def test_q25_an_interrupted_upload_resumes_without_a_second_copy(
+    fake, store, tmp_path, monkeypatch
+) -> None:
+    from quill.core.scribe.model import ScribeOffline
+
+    said, results = [], []
+    runner = _runner(fake, store, tmp_path, said, results)
+    runner.jobs.add([_job(tmp_path, "docx")])
+    real = runner.client.create_from_file
+    calls = {"n": 0}
+
+    def reached_scribe_then_dropped(path, password=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            real(path, password)  # Scribe made the document...
+            raise ScribeOffline("lost", server_code="offline")  # ...the answer was lost
+        return real(path, password)
+
+    monkeypatch.setattr(runner.client, "create_from_file", reached_scribe_then_dropped)
+    runner.run_once()
+    assert results and results[0].state == q.DONE
+    assert len(fake.uploads) == 1  # adopted, not sent (or charged) again
+
+
+def test_q25_an_upload_offline_for_a_while_says_so_once_and_resumes(
+    fake, store, tmp_path, monkeypatch
+) -> None:
+    from quill.core.scribe.model import ScribeOffline
+
+    said, results = [], []
+    runner = _runner(fake, store, tmp_path, said, results)
+    runner.jobs.add([_job(tmp_path, "docx")])
+    real = runner.client.create_from_file
+    calls = {"n": 0}
+
+    def offline_four_times(path, password=None):
+        calls["n"] += 1
+        if calls["n"] <= 4:
+            raise ScribeOffline("no network", server_code="offline")
+        return real(path, password)
+
+    monkeypatch.setattr(runner.client, "create_from_file", offline_four_times)
+    runner.run_once()
+    assert results and results[0].state == q.DONE and len(fake.uploads) == 1
+    assert [t for k, t in said if k == "offline"] == [
+        "Upload of Notes.pdf was interrupted; QUILL will resume it."
+    ]
+
+
+def test_q25_a_long_outage_keeps_reconnecting_well_past_eight_tries(fake, store, tmp_path) -> None:
+    from quill.core.scribe.model import ScribeOffline
+
+    clock = _Clock()
+    clock.t = 0.0
+    results, waits = [], []
+    runner = _runner(fake, store, tmp_path, results=results, clock=clock)
+    runner._sleep = lambda s: (waits.append(s), setattr(clock, "t", clock.t + s))
+    real_factory = runner._channel_factory
+    drops = {"n": 0}
+
+    def factory(doc_id):
+        if drops["n"] < 30:
+            drops["n"] += 1
+            raise ScribeOffline("no network", server_code="offline")
+        return real_factory(doc_id)
+
+    runner._channel_factory = factory
+    runner.jobs.add([_job(tmp_path, "docx")])
+    runner.run_once()
+    assert results and results[0].state == q.DONE
+    assert max(waits) == 60.0 and clock.t > 20 * 60  # twenty minutes offline, then done
+
+
+def test_q25_an_outage_longer_than_two_hours_ends_the_job_with_retry(fake, store, tmp_path) -> None:
+    from quill.core.scribe.model import ScribeOffline
+
+    clock = _Clock()
+    clock.t = 0.0
+    runner = _runner(fake, store, tmp_path, clock=clock)
+    runner._sleep = lambda s: setattr(clock, "t", clock.t + s)
+
+    def never(_doc_id):
+        raise ScribeOffline("no network", server_code="offline")
+
+    runner._channel_factory = never
+    [job] = runner.jobs.add([_job(tmp_path, "docx")])
+    runner.run_once()
+    job = runner.jobs.get(job.id)
+    assert job.state == q.FAILED and job.error_code == "QUILL-SCRIBE-OFFLINE"
+    assert clock.t >= 2 * 60 * 60
+
+
+# ------------------------------------------------------------------ Q33: Open Preview
+
+
+def test_q33_open_preview_opens_the_documents_own_page_signed_in(fake, store) -> None:
+    url = ScribeClient(store).preview_url("doc 1")
+    assert "/auth/browser_from_oauth?" in url and "documents%2Fdoc%25201" in url
+
+
+# ------------------------------------------------------------------ the low findings
+
+
+def test_q26_a_result_always_gets_its_formats_own_extension(tmp_path) -> None:
+    client = ScribeClient(memory_store())
+    assert client._target_name("Notes.hta", "Notes", "docx") == "Notes.docx"
+    assert client._target_name("Notes.DOCX", "Notes", "docx") == "Notes.DOCX"
+    assert client._target_name("", "Notes", "brf") == "Notes.brf"
+
+
+def test_q29_a_refresh_token_another_app_already_used_is_not_a_sign_out(fake) -> None:
+    """Two apps refresh at once; if Scribe rotated the token, the loser reads the
+    vault again instead of signing the person out."""
+    shared = memory_store()
+    shared.save(auth.StoredTokens("old", "spent-refresh", 0))  # expired: must refresh
+    real_load = shared.load
+    calls = {"n": 0}
+
+    def load_then_rotated():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return real_load()  # what this app saw before refreshing
+        return auth.StoredTokens("access-1", "refresh-1", 4_000_000_000)  # the other app's
+
+    shared.load = load_then_rotated  # type: ignore[method-assign]
+    assert shared.access_token() == "access-1"
+
+
+def test_q30_only_a_401_or_403_handshake_is_a_sign_out(monkeypatch) -> None:
+    import types
+
+    from quill.core.scribe import channel
+    from quill.core.scribe.model import ScribeOffline, ScribeSignInRequired
+
+    class Refused(Exception):
+        def __init__(self, status: int, text: str) -> None:
+            super().__init__(text)
+            self.response = types.SimpleNamespace(status_code=status)
+
+    def fake_connect(status, text):
+        def connect(*_a, **_k):
+            raise Refused(status, text)
+
+        return connect
+
+    module = types.ModuleType("websockets.sync.client")
+    monkeypatch.setitem(__import__("sys").modules, "websockets.sync.client", module)
+    module.connect = fake_connect(500, "server said 401 somewhere in its text")
+    with pytest.raises(ScribeOffline):
+        channel.connect("wss://scribeit.io/socket/websocket")
+    module.connect = fake_connect(403, "Forbidden")
+    with pytest.raises(ScribeSignInRequired):
+        channel.connect("wss://scribeit.io/socket/websocket")
+
+
+def test_q31_the_private_word_copy_is_removed_when_the_job_is_done(fake, store, tmp_path) -> None:
+    import tempfile
+
+    folder = Path(tempfile.mkdtemp(prefix="quill-scribe-"))
+    copy = folder / "Untitled.docx"
+    copy.write_bytes(b"PK fake docx")
+    results = []
+    runner = _runner(fake, store, tmp_path, results=results)
+    runner.jobs.add([
+        q.Job(
+            title="Untitled.docx",
+            source_path=str(copy),
+            formats=["docx"],
+            folder=str(tmp_path / "out" / "Untitled"),
+        )
+    ])
+    runner.run_once()
+    assert results and results[0].state == q.DONE
+    assert not folder.exists()
+
+
+def test_q43_links_are_named_by_their_file_and_lose_their_token(fake, store, tmp_path) -> None:
+    assert q.link_name("https://x.org/files/My%20Notes.pdf?token=abc") == "My Notes.pdf"
+    assert q.link_name("https://x.org/") == "x.org"
+    assert q.scrub_link("https://x.org/a.pdf?token=abc#p2") == "https://x.org/a.pdf"
+    results = []
+    runner = _runner(fake, store, tmp_path, results=results)
+    link = "https://x.org/files/Notes.pdf?token=secret"
+    runner.jobs.add([q.Job(title=link, source_url=link, formats=["docx"], folder=str(tmp_path))])
+    runner.run_once()
+    text = (tmp_path / "shared" / "queue.json").read_text(encoding="utf-8")
+    assert "secret" not in text and results[0].name == "Notes.pdf"
+
+
+def test_q43_finished_jobs_are_pruned_after_thirty_days(tmp_path) -> None:
+    jobs = q.JobQueue(tmp_path)
+    [old] = jobs.add([_job(tmp_path, "docx", state=q.DONE)])
+    jobs.update(old.id, lambda j: None)
+    import json as _json
+
+    data = _json.loads(jobs.path.read_text(encoding="utf-8"))
+    data["jobs"][0]["updated"] = time.time() - q.PRUNE_AFTER_S - 10
+    jobs.path.write_text(_json.dumps(data), encoding="utf-8")
+    [new] = jobs.add([_job(tmp_path, "docx")])
+    assert [j.id for j in jobs.jobs()] == [new.id]
+
+
+def test_q46_sign_out_always_wipes(fake, store, monkeypatch) -> None:
+    from quill.core.scribe import http as scribe_http
+
+    def broken(*_a, **_k):
+        raise ValueError("something unexpected in the HTTP stack")
+
+    monkeypatch.setattr(scribe_http, "request", broken)
+    assert auth.sign_out(store) is True
+    assert store.load() is None

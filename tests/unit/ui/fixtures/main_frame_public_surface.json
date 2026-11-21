@@ -805,6 +805,7 @@
   "scribe_my_documents",
   "scribe_open_account",
   "scribe_open_existing",
+  "scribe_open_preview",
   "scribe_open_result",
   "scribe_options",
   "scribe_queue_wake",

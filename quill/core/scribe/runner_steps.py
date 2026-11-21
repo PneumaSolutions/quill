@@ -10,7 +10,6 @@ replies) and the rate-limit back-off.
 
 from __future__ import annotations
 
-import time
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -19,7 +18,9 @@ from typing import TYPE_CHECKING, Any
 from quill.core.scribe import queue as q
 from quill.core.scribe.channel import DocumentChannel
 from quill.core.scribe.client import ScribeClient
+from quill.core.scribe.library import title_stem
 from quill.core.scribe.model import (
+    DocumentSettings,
     ScribeBusy,
     ScribeError,
     ScribeOffline,
@@ -35,7 +36,12 @@ SLOW_DOWN_S = 60.0  # the first wait when Scribe asks to slow down; it doubles
 SLOW_DOWN_MAX_S = 600.0
 MAX_SLOW_DOWNS = 6  # then the job ends with Retry
 POLL_S = 30.0  # read the outputs over REST this often while waiting (PRD 3.5)
-MAX_RECONNECTS = 8
+MAX_RECONNECTS = 8  # kept for callers; offline now gives up by time, not count
+#: Offline: keep reconnecting (each wait up to a minute) for this long before
+#: the job ends with Retry. Two hours covers a closed lid or a dead router;
+#: it was about two and a half minutes (independent review Q25).
+OFFLINE_GIVE_UP_S = 2 * 60 * 60.0
+OFFLINE_MAX_WAIT_S = 60.0
 MILESTONES = (25, 50, 75)
 
 
@@ -48,6 +54,8 @@ class ConversionSteps:
     _say: Callable[[str, str, q.Job], None]
     _sleep: Callable[[float], Any]
     _clock: Callable[[], float]
+    _now: Callable[[], float]
+    jobs: q.JobQueue
     _milestones: dict[str, set[int]]
     _stages_said: dict[str, set[str]]
     _slowed_said: set[str]
@@ -61,6 +69,92 @@ class ConversionSteps:
         def _done(self, job: q.Job) -> None: ...
         def _password(self, job_id: str) -> str | None: ...
         def _forget_password(self, job_id: str) -> None: ...
+
+    def _upload(self, job: q.Job) -> None:
+        self._check_owner(job)
+        self._update(job, lambda j: _set_state(j, q.UPLOADING, f"Sending {j.name}."))
+        self._say("start", f"Scribe for Documents is converting {job.name}.", job)
+        password = self._password(job.id)
+        offline_since: float | None = None
+        attempts = 0
+        while True:
+            try:
+                # An earlier try may have reached Scribe before the line went:
+                # take that document rather than sending (and paying for) a
+                # second copy (independent review Q25).
+                document_id = self._already_uploaded(job) if job.upload_started else ""
+                if not document_id:
+                    started = self._now()
+                    job = self._update(job, partial(_set_fields, upload_started=started))
+                    if job.source_url:
+                        document_id = self.client.create_from_url(job.source_url, password)
+                    else:
+                        document_id = self.client.create_from_file(Path(job.source_path), password)
+                break
+            except ScribeBusy:
+                job = self._slow_down(job, then=q.UPLOADING)
+            except ScribeOffline:
+                # PRD 11: said once, after a few seconds; then a quiet wait
+                # that resumes the upload when the network is back.
+                attempts += 1
+                offline_since = offline_since or self._clock()
+                if self._clock() - offline_since > OFFLINE_GIVE_UP_S:
+                    raise
+                wait = min(OFFLINE_MAX_WAIT_S, 2.0**attempts)
+                if attempts == 2:
+                    self._say(
+                        "offline",
+                        f"Upload of {job.name} was interrupted; {self.app} will resume it.",
+                        job,
+                    )
+                message = f"Upload interrupted; trying again in {_duration(wait)}."
+                job = self._update(job, partial(_set_fields, message=message))
+                self._sleep(wait)
+                job = self._reload(job)
+                self._check_owner(job)
+        self._check_owner(job)
+
+        def _uploaded(j: q.Job) -> None:
+            j.document_id = document_id
+            if j.source_url:
+                # Scribe has fetched it: the query string (often a token) need
+                # not sit in queue.json any longer (Q43).
+                if not j.title or j.title == j.source_url:
+                    j.title = q.link_name(j.source_url)
+                j.source_url = q.scrub_link(j.source_url)
+
+        self._update(job, _uploaded)
+
+    def _already_uploaded(self, job: q.Job) -> str:
+        """The document an interrupted upload created, when Scribe has one.
+
+        Matched by title (the file name, with or without its extension) among
+        documents created since the upload started, that no other job holds.
+        """
+        import datetime as _dt
+
+        listing = self.client.documents()
+        names = {job.name, title_stem(job.name)} if not job.source_url else {job.source_url}
+        taken = {j.document_id for j in self.jobs.jobs() if j.id != job.id and j.document_id}
+        best: tuple[float, str] | None = None
+        for doc in listing.documents:
+            if doc.title not in names or doc.id in taken:
+                continue
+            try:
+                made = _dt.datetime.fromisoformat(doc.inserted_at.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            stamp = made.timestamp()
+            if stamp >= job.upload_started - 120 and (best is None or stamp > best[0]):
+                best = (stamp, doc.id)
+        return best[1] if best else ""
+
+    def _send_settings(self, job: q.Job) -> None:
+        settings = DocumentSettings.from_json(job.settings)
+        self.client.set_document_settings(job.document_id, settings)
+        if job.save_account_defaults:
+            self.client.set_account_defaults(settings)
+        self._update(job, lambda j: setattr(j, "settings", None))
 
     def _convert_all(self, job: q.Job) -> None:
         job = self._update(job, lambda j: _set_state(j, q.CONVERTING, ""))
@@ -77,11 +171,10 @@ class ConversionSteps:
                         job = self._one_format(channel, job, format_id)
             except ScribeOffline as exc:
                 attempts += 1
-                lost = plain(exc)
-                offline_since = offline_since or time.monotonic()
-                if attempts > MAX_RECONNECTS:
+                offline_since = offline_since or self._clock()
+                if self._clock() - offline_since > OFFLINE_GIVE_UP_S:
                     raise
-                if not offline_said and time.monotonic() - offline_since >= OFFLINE_SPEAK_AFTER_S:
+                if not offline_said and self._clock() - offline_since >= OFFLINE_SPEAK_AFTER_S:
                     self._say(
                         "offline",
                         "Reconnecting to Scribe for Documents; your "
@@ -89,8 +182,10 @@ class ConversionSteps:
                         job,
                     )
                     offline_said = True
+                wait = min(OFFLINE_MAX_WAIT_S, 2.0**attempts)
+                lost = f"{plain(exc)} Trying again in {_duration(wait)}."
                 self._update(job, partial(_set_fields, message=lost))
-                self._sleep(min(30.0, 2.0**attempts))
+                self._sleep(wait)
                 job = self._reload(job)
                 self._check_owner(job)
                 job = self._collect_finished_while_away(job)
@@ -107,7 +202,10 @@ class ConversionSteps:
         wires = {_wire(f): f for f in job.remaining}
         for output in outputs:
             if output.complete and output.format in wires:
-                job = self._download(job, wires[output.format])
+                try:
+                    job = self._download(job, wires[output.format])
+                except ScribeOffline:
+                    return job  # still offline: the reconnect loop carries on
         return job
 
     def _slow_down(self, job: q.Job, *, then: str = q.CONVERTING) -> q.Job:

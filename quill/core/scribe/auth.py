@@ -189,11 +189,27 @@ class TokenStore:
             return tokens.access_token
 
     def _refresh(self, tokens: StoredTokens) -> StoredTokens:
-        reply = token_request({
-            "grant_type": "refresh_token",
-            "client_id": client_id(),
-            "refresh_token": tokens.refresh_token,
-        })
+        try:
+            reply = token_request({
+                "grant_type": "refresh_token",
+                "client_id": client_id(),
+                "refresh_token": tokens.refresh_token,
+            })
+        except ScribeSignInRequired:
+            # Another QUILL app may have refreshed a moment ago and been given
+            # a new refresh token (if Scribe rotates them), leaving ours spent:
+            # use what is in the vault now before saying "sign in again" (Q29).
+            current = self.load()
+            if current is None or current.refresh_token == tokens.refresh_token:
+                raise
+            if not current.expires_soon(self._now()):
+                return current
+            reply = token_request({
+                "grant_type": "refresh_token",
+                "client_id": client_id(),
+                "refresh_token": current.refresh_token,
+            })
+            tokens = current
         fresh = self.save_reply(reply)
         if not fresh.refresh_token:  # the server keeps the old one valid
             fresh = StoredTokens(fresh.access_token, tokens.refresh_token, fresh.expires_at)
@@ -463,7 +479,7 @@ def sign_out(store: TokenStore | None = None) -> bool:
             body=urlencode({"client_id": client_id(), "token": token}).encode("ascii"),
             timeout=15.0,
         )
-    except ScribeError:
+    except Exception:  # noqa: BLE001 - whatever went wrong, the wipe below must happen (Q46)
         logger.info("Could not reach Scribe to revoke the sign-in; forgetting it here")
     store.wipe()
     return True

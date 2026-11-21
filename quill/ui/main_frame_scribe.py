@@ -286,6 +286,15 @@ class ScribeDocumentsMixin:
 
         self._scribe_in_background(lambda: ScribeClient().account_page_url(), webbrowser.open)
 
+    def scribe_open_preview(self, document_id: str) -> None:
+        """Open Preview: the document's page on Scribe, signed in, where the free
+        first two pages can be read when the pages have run out (PRD 11)."""
+        import webbrowser
+
+        from quill.core.scribe.client import ScribeClient
+
+        self._scribe_in_background(lambda: ScribeClient().preview_url(document_id), webbrowser.open)
+
     def scribe_options(self) -> None:
         self.open_general_preferences(focus_key="scribe_open_results")  # type: ignore[attr-defined]
 
@@ -434,6 +443,15 @@ class ScribeDocumentsMixin:
             if path.suffix.lower() in (".docx", ".html", ".htm"):
                 self.scribe_open_result(path)  # type: ignore[attr-defined]
                 return
+        if "docx" not in document.ready_formats():
+            # Not made yet: a new conversion, so the person sees it described
+            # in the Convert dialog first (independent review Q35).
+            from quill.core.scribe.consent import SourceInfo
+
+            self._scribe_convert(
+                [SourceInfo(url="")], formats="docx", purpose="open", reuse=document
+            )
+            return
         root = str(getattr(getattr(self, "settings", None), "scribe_download_folder", "") or "")
         job = q.Job(
             app=APP_NAME,

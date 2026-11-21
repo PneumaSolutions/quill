@@ -53,6 +53,16 @@ def _runner(fake, store, tmp_path, said=None, results=None, **kw):
     )
 
 
+def _dead_pid() -> int:
+    """The id of a process that has already ended (the app that closed)."""
+    import subprocess
+    import sys
+
+    process = subprocess.Popen([sys.executable, "-c", "pass"])
+    process.wait()
+    return process.pid
+
+
 def _job(tmp_path, *formats, name="Notes.pdf", **kw):
     source = tmp_path / name
     source.write_bytes(b"%PDF-1.4 fake")
@@ -322,7 +332,8 @@ def test_needs_purchase_keeps_the_purchase_link(fake, store, tmp_path) -> None:
     assert job.state == q.NEEDS_PAGES and job.error_code == "QUILL-SCRIBE-PAGES"
     assert job.purchase_url.endswith("/pricing_options")
     assert (
-        said[-1][1] == "You are out of pages. You can still read the first two pages: Open Preview."
+        said[-1][1] == "You are out of pages. You can still read the first two pages: "
+        "Open Preview, in Scribe Conversions."
     )
 
 
@@ -405,7 +416,7 @@ def test_a_job_survives_a_restart_and_is_never_uploaded_twice(fake, store, tmp_p
         lambda j: (
             setattr(j, "document_id", doc.id),
             setattr(j, "state", q.CONVERTING),
-            setattr(j, "owner_pid", 1),
+            setattr(j, "owner_pid", _dead_pid()),
         ),
     )
     runner = _runner(fake, store, tmp_path, results=results)

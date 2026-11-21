@@ -185,13 +185,16 @@ class ScribeConversionsWindow:
             items.append(("&Sign In...", self.host.scribe_sign_in))
         if job.state == q.NEEDS_PAGES:
             items.append(("&Buy Pages", self.buy_pages))
+            if job.document_id:
+                items.append(("Open &Preview", self.open_preview))
         if job.state not in q.FINISHED:
             items.append(("&Cancel Waiting", self.cancel_waiting))
         if job.state in (q.FAILED, q.CANCELLED, q.NEEDS_PAGES, q.NEEDS_SIGNIN):
             items.append(("&Retry", self.retry))
         if job.document_id:
             items.append(("Ask for &Human Review...", self.human_review))
-        items += [("Copy &Details", self.copy_details), ("&Remove from List", self.remove)]
+        # Remove keeps "v": Retry has R (Q38: one key, one command).
+        items += [("Copy &Details", self.copy_details), ("Remo&ve from List", self.remove)]
         return items
 
     def show_commands(self) -> None:
@@ -229,16 +232,20 @@ class ScribeConversionsWindow:
             self.host.scribe_queue_wake()
 
     def enter_password(self) -> None:
-        from quill.core.scribe.consent import describe_source
+        from quill.core.scribe.consent import SourceInfo, describe_source
         from quill.ui.scribe_convert_dialog import ask_password
 
         job = self.selected()
         if job is None:
             return
-        source = describe_source(Path(job.source_path)) if job.source_path else None
-        if source is None:
-            return
-        password = ask_password(self.host, self.frame, source)
+        # A job from a link or from My Scribe Documents has no local file; its
+        # password is still asked for, and Scribe checks it (Q24).
+        source = (
+            describe_source(Path(job.source_path))
+            if job.source_path and Path(job.source_path).is_file()
+            else SourceInfo(url=job.source_url)
+        )
+        password = ask_password(self.host, self.frame, source, name=job.name)
         if password is not None:
             self.host.scribe_give_password(job.id, password)
 
@@ -248,6 +255,11 @@ class ScribeConversionsWindow:
             from quill.core.scribe.client import ScribeClient
 
             webbrowser.open(job.purchase_url or ScribeClient().purchase_url())
+
+    def open_preview(self) -> None:
+        job = self.selected()
+        if job is not None and job.document_id:
+            self.host.scribe_open_preview(job.document_id)
 
     def cancel_waiting(self) -> None:
         from quill.core.scribe.runner import cancel_waiting
@@ -284,10 +296,25 @@ class ScribeConversionsWindow:
         self.host._set_status("Details copied.")
 
     def remove(self) -> None:
+        """Remove from List. A job still running says what that means (Scribe
+        finishes it anyway), and the selection stays where it was (Q38)."""
+        from quill.core.scribe.runner import cancel_message
+
         job = self.selected()
-        if job is not None:
-            self.jobs_store.remove(job.id)
-            self.refresh(force=True)
+        if job is None:
+            return
+        index = self.list.GetFirstSelected()
+        running = job.state not in q.FINISHED
+        self.jobs_store.remove(job.id)
+        self.refresh(force=True)
+        if running:
+            app = self.host.scribe_app_name()
+            self.host._announce(cancel_message.replace("QUILL", app, 1).format(name=job.name))
+        count = self.list.GetItemCount()
+        if count:
+            target = max(0, min(index, count - 1))
+            state = self.wx.LIST_STATE_SELECTED | self.wx.LIST_STATE_FOCUSED
+            self.list.SetItemState(target, state, state)
 
     # ------------------------------------------------------------ keys
 

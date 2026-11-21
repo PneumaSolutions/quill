@@ -89,7 +89,10 @@ def connect(url: str) -> Any:
             server_code="offline",
         ) from exc
     except Exception as exc:  # noqa: BLE001 - a refused handshake is a bad token
-        if "401" in str(exc) or "403" in str(exc):
+        # The handshake's own status code, not "401" anywhere in the text (Q30).
+        response = getattr(exc, "response", None)
+        status = getattr(response, "status_code", None) or getattr(exc, "status_code", None)
+        if status in (401, 403):
             raise error_for("unauthenticated", "") from exc
         raise ScribeOffline(
             "QUILL could not reach Scribe for Documents. Check your internet connection.",

@@ -67,7 +67,7 @@ def request(
     url: str,
     *,
     headers: dict[str, str] | None = None,
-    body: bytes | None = None,
+    body: bytes | BinaryIO | None = None,
     timeout: float = TIMEOUT_S,
     stream: bool = False,
 ) -> Response:
@@ -184,4 +184,81 @@ def multipart(fields: dict[str, str], files: dict[str, tuple[str, bytes]]) -> tu
     return b"".join(parts), f"multipart/form-data; boundary={boundary}"
 
 
-__all__ = ["TIMEOUT_S", "Response", "multipart", "raise_for", "request"]
+class MultipartFile:
+    """A ``multipart/form-data`` upload read from disk as it is sent (Q18).
+
+    :func:`multipart` builds the whole body in memory -- two or three copies of
+    a 300 MB scan. This sends the same bytes in pieces: :meth:`open` gives a
+    fresh stream (a retry after a 401 starts again) and :attr:`length` is the
+    exact ``Content-Length``.
+    """
+
+    def __init__(self, fields: dict[str, str], name: str, path: Any) -> None:
+        import secrets
+        from pathlib import Path
+
+        self.path = Path(path)
+        boundary = "quill-" + secrets.token_hex(12)
+        self.content_type = f"multipart/form-data; boundary={boundary}"
+        lead = b"".join(
+            f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n'.encode()
+            + v.encode("utf-8")
+            + b"\r\n"
+            for k, v in fields.items()
+        )
+        safe = self.path.name.replace('"', "'").replace("\r", " ").replace("\n", " ")
+        self._prefix = (
+            lead
+            + (
+                f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"; '
+                f'filename="{safe}"\r\nContent-Type: application/octet-stream\r\n\r\n'
+            ).encode()
+        )
+        self._suffix = f"\r\n--{boundary}--\r\n".encode()
+        self.length = len(self._prefix) + self.path.stat().st_size + len(self._suffix)
+
+    def open(self) -> BinaryIO:
+        return _Chained([self._prefix, self.path, self._suffix])  # type: ignore[return-value]
+
+
+class _Chained:
+    """Bytes, then a file's contents, then bytes, read in order."""
+
+    def __init__(self, parts: list[Any]) -> None:
+        self._parts = parts
+        self._handle: Any = None
+        self._buffer = b""
+
+    def _next(self) -> bool:
+        if self._handle is not None:
+            self._handle.close()
+            self._handle = None
+        if not self._parts:
+            return False
+        part = self._parts.pop(0)
+        if isinstance(part, bytes):
+            self._buffer = part
+        else:
+            self._handle = open(part, "rb")  # noqa: SIM115 - closed in _next/close
+        return True
+
+    def read(self, size: int = -1) -> bytes:
+        while True:
+            if self._buffer:
+                take = self._buffer if size < 0 else self._buffer[:size]
+                self._buffer = self._buffer[len(take) :]
+                return take
+            if self._handle is not None:
+                data: bytes = self._handle.read(size if size > 0 else 1024 * 1024)
+                if data:
+                    return data
+            if not self._next():
+                return b""
+
+    def close(self) -> None:
+        if self._handle is not None:
+            self._handle.close()
+            self._handle = None
+
+
+__all__ = ["TIMEOUT_S", "MultipartFile", "Response", "multipart", "raise_for", "request"]

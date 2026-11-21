@@ -189,7 +189,7 @@ class ScribeClient:
         path: str,
         *,
         json_body: Any = None,
-        body: bytes | None = None,
+        body: bytes | http.MultipartFile | None = None,
         content_type: str = "",
         what: str = "",
         timeout: float = http.TIMEOUT_S,
@@ -208,7 +208,19 @@ class ScribeClient:
             headers["Authorization"] = (
                 f"Bearer {self.store.access_token(force_refresh=attempt == 1)}"
             )
-            response = http.request(method, url, headers=headers, body=body, timeout=timeout)
+            if isinstance(body, http.MultipartFile):
+                headers["Content-Length"] = str(body.length)
+                stream = body.open()
+                try:
+                    response = http.request(
+                        method, url, headers=headers, body=stream, timeout=timeout
+                    )
+                except OSError as exc:  # the file went away mid-upload
+                    raise ScribeError(f"QUILL could not read {body.path.name}: {exc}.") from None
+                finally:
+                    stream.close()
+            else:
+                response = http.request(method, url, headers=headers, body=body, timeout=timeout)
             if response.status != 401 or attempt == 1:
                 break
         if response.status == 401:
@@ -240,6 +252,11 @@ class ScribeClient:
         """A browser link that arrives signed in (``browser_from_oauth``)."""
         return browser_url(self.store.access_token(), return_to)
 
+    def preview_url(self, document_id: str) -> str:
+        """The document's own page on Scribe, signed in: where the free two-page
+        preview can be read when the pages run out (PRD 11, Open Preview)."""
+        return browser_url(self.store.access_token(), f"/documents/{quote(document_id, safe='')}")
+
     def purchase_url(self) -> str:
         return f"{base_url()}/signup/page_pack"
 
@@ -247,17 +264,17 @@ class ScribeClient:
 
     def create_from_file(self, path: Path, password: str | None = None) -> str:
         """Upload a file; returns the new document's id."""
+        fields = {"document[password]": password} if password else {}
         try:
-            data = path.read_bytes()
+            # Read from disk as it is sent, never whole into memory (Q18).
+            upload = http.MultipartFile(fields, "document[file]", path)
         except OSError as exc:
             raise ScribeError(f"QUILL could not read {path.name}: {exc.strerror or exc}.") from None
-        fields = {"document[password]": password} if password else {}
-        body, content_type = http.multipart(fields, {"document[file]": (path.name, data)})
         reply = self._call(
             "POST",
             "/api/documents",
-            body=body,
-            content_type=content_type,
+            body=upload,
+            content_type=upload.content_type,
             what=f"uploading {path.name}",
             timeout=600.0,
         ).json()
@@ -424,6 +441,11 @@ class ScribeClient:
         chosen = safe_filename(name) if name else ""
         if not chosen or "." not in chosen:
             chosen = safe_filename(f"{fallback_stem}{extension}")
+        # The extension is the format's own, whatever the server's name said:
+        # a result is opened by its extension, so "Notes.hta" must never land
+        # (independent review Q26).
+        if Path(chosen).suffix.lower() != extension:
+            chosen = safe_filename(f"{Path(chosen).stem or fallback_stem}{extension}")
         return chosen
 
     @staticmethod

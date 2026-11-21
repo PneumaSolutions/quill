@@ -4,6 +4,8 @@ hand-over between apps, and Cancel Waiting. Split from ``runner.py`` (GATE-11).
 
 from __future__ import annotations
 
+import json
+import time
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -78,20 +80,38 @@ def _handover_ref(job_id: str) -> Any:
     return SecretRef("scribe", f"password-{job_id}")
 
 
+#: A hand-over nobody collected in this long is thrown away unread (Q24).
+HANDOVER_TTL_S = 600.0
+
+
 def hand_over_password(store: TokenStore, job_id: str, password: str) -> None:
-    store.manager.set(_handover_ref(job_id), password)
+    """Leave a password for the app running the queue, stamped with the time.
+
+    It lives only until that app reads it, the giving app closes (it wipes what
+    it left), or :data:`HANDOVER_TTL_S` passes -- whichever is first.
+    """
+    stamped = json.dumps({"password": password, "at": time.time()})
+    store.manager.set(_handover_ref(job_id), stamped)
 
 
 def take_handed_password(store: TokenStore, job_id: str) -> str | None:
-    """Read a handed-over password once and wipe it; None when there is none."""
+    """Read a handed-over password once and wipe it; None when there is none or
+    when it is older than :data:`HANDOVER_TTL_S`."""
     try:
         ref = _handover_ref(job_id)
         value = store.manager.get(ref)
-        if value is not None:
-            store.manager.delete(ref)
-        return value or None
+        if value is None:
+            return None
+        store.manager.delete(ref)
     except Exception:  # noqa: BLE001 - a locked or missing vault hands nothing over
         return None
+    try:
+        data = json.loads(value)
+    except ValueError:
+        return None  # not ours (an older format): wiped, never used
+    if not isinstance(data, dict) or time.time() - float(data.get("at") or 0) > HANDOVER_TTL_S:
+        return None
+    return str(data.get("password") or "") or None
 
 
 cancel_message = (
@@ -106,6 +126,24 @@ def cancel_waiting(jobs: q.JobQueue, job_id: str, app: str = "QUILL") -> str:
     if job is None:
         return ""
     return cancel_message.replace("QUILL", app, 1).format(name=job.name)
+
+
+def _remove_private_copy(job: q.Job) -> None:
+    """A document sent as a Word copy lives in its own ``quill-scribe-*`` temp
+    folder; once the job is done nothing needs it (Q31). Kept until then, since
+    Send Next File and Retry still read it."""
+    import shutil
+    import tempfile
+
+    if not job.source_path:
+        return
+    folder = Path(job.source_path).parent
+    temp = Path(tempfile.gettempdir()).resolve()
+    try:
+        if folder.name.startswith("quill-scribe-") and folder.resolve().parent == temp:
+            shutil.rmtree(folder, ignore_errors=True)
+    except OSError:
+        pass
 
 
 __all__ = ["cancel_message", "cancel_waiting", "hand_over_password", "take_handed_password"]

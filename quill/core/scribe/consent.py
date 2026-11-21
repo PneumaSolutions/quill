@@ -72,9 +72,22 @@ def describe_source(path: Path) -> SourceInfo:
     return SourceInfo(path=path, size=size, pages=pages, encrypted=encrypted)
 
 
+#: Above this, a PDF is never read whole just to describe it (Q18): its start
+#: and end say whether it is locked, and pypdf counts pages without reading it all.
+_WHOLE_READ_BYTES = 25 * 1024 * 1024
+_EDGE_BYTES = 1024 * 1024
+
+
 def _pdf_facts(path: Path) -> tuple[int | None, bool]:
     try:
-        head = path.read_bytes()
+        size = path.stat().st_size
+        with open(path, "rb") as handle:
+            if size <= _WHOLE_READ_BYTES:
+                head = handle.read()
+            else:
+                head = handle.read(_EDGE_BYTES)
+                handle.seek(max(0, size - _EDGE_BYTES))
+                head += handle.read()
     except OSError:
         return None, False
     encrypted = b"/Encrypt" in head
@@ -86,6 +99,8 @@ def _pdf_facts(path: Path) -> tuple[int | None, bool]:
             return None, True
         return len(reader.pages), encrypted
     except Exception:  # noqa: BLE001 - no pypdf, or a damaged file: count the pages by hand
+        if size > _WHOLE_READ_BYTES:
+            return None, encrypted  # only the edges were read: no count
         count = len(re.findall(rb"/Type\s*/Page[^s]", head))
         return (count or None), encrypted
 

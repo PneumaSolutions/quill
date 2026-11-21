@@ -54,6 +54,8 @@ HEARTBEAT_S = 5.0
 #: How long a lock or claim write may wait for the queue's lock file.
 _CLAIM_WAIT_S = 1.0
 _SCHEMA = 1
+#: Finished jobs leave the list after this long (30 days).
+PRUNE_AFTER_S = 30 * 24 * 60 * 60.0
 _READ_TRIES = 3
 _READ_RETRY_S = 0.05
 
@@ -136,6 +138,8 @@ class Job:
     retry_at: float = 0.0  # not run again before this time (after an unexpected failure)
     busy_count: int = 0  # times Scribe asked to slow down (each wait is longer)
     saved: dict[str, str] = field(default_factory=dict)  # format -> file already saved
+    upload_started: float = 0.0  # when the last upload began (an interrupted one is found)
+    delivered: bool = False  # its result was said (and opened) by one app
     extra: dict[str, Any] = field(default_factory=dict, repr=False)  # a newer version's fields
 
     @classmethod
@@ -155,7 +159,11 @@ class Job:
     def name(self) -> str:
         if self.source_path:
             return Path(self.source_path).name
-        return self.title or self.source_url or "document"
+        if self.title and self.title != self.source_url:
+            return self.title
+        if self.source_url:
+            return link_name(self.source_url)
+        return "document"
 
     @property
     def remaining(self) -> list[str]:
@@ -276,10 +284,17 @@ class JobQueue:
 
     def add(self, jobs: list[Job], *, batch_allowed: bool = False) -> list[Job]:
         """Queue documents. Without the batch exception, only the first goes on
-        its own; the rest wait for Send Next File (PRD 7.4)."""
+        its own; the rest wait for Send Next File (PRD 7.4). Finished jobs older
+        than :data:`PRUNE_AFTER_S` are dropped while at it (Q43)."""
         self.folder.mkdir(parents=True, exist_ok=True)
         with guarded_write(self.path):
             existing, _known = self._read_for_write()
+            cutoff = time.time() - PRUNE_AFTER_S
+            existing = [
+                e
+                for e in existing
+                if not (isinstance(e, Job) and e.state in FINISHED and e.updated < cutoff)
+            ]
             for index, job in enumerate(jobs):
                 job.formats = in_build_order(job.formats)
                 if not batch_allowed and index > 0:
@@ -384,6 +399,19 @@ class JobQueue:
                 self._write(entries)
         return count
 
+    def mark_delivered(self, job_id: str) -> Job | None:
+        """Claim saying a finished job's result: the job when this call claimed
+        it, None when another app already had (or it is gone)."""
+        claimed: list[Job] = []
+
+        def _claim(job: Job) -> None:
+            if job.state == DONE and not job.delivered:
+                job.delivered = True
+                claimed.append(job)
+
+        self.update(job_id, _claim)
+        return claimed[0] if claimed else None
+
     def waiting_count(self) -> int:
         return sum(1 for j in self._read() if j.state not in FINISHED)
 
@@ -460,83 +488,17 @@ class RunnerLock:
                     pass
 
 
-# ------------------------------------------------------------------ sentences
-
-
-def stage_sentence(job: Job, *, prefix: bool = False) -> str:
-    """ "Notes.pdf, adding image descriptions." (the prefix only when asked)."""
-    from quill.core.scribe.model import stage_words
-
-    text = f"{job.name}, {stage_words(job.stage)}."
-    return f"Scribe for Documents: {text}" if prefix else text
-
-
-def status_sentence(job: Job) -> str:
-    """Scribe Status: "Notes.pdf: adding image descriptions, 40 percent, about 2 minutes." """
-    from quill.core.scribe.model import stage_words
-
-    if job.state == CONVERTING and job.stage:
-        words = stage_words(job.stage)
-    else:
-        words = STATE_WORDS.get(job.state, job.state)
-    text = f"{job.name}: {words}"
-    if job.state in ACTIVE:
-        text += f", {job.percent} percent"
-        if job.eta_s:
-            minutes = max(1, round(job.eta_s / 60))
-            text += f", about {minutes} minute{'s' if minutes != 1 else ''}"
-    return text + "."
-
-
-def short_folder(folder: str) -> str:
-    """``C:\\Users\\Mike\\Documents\\Scribe for Documents\\Notes`` -> ``Documents\\...``."""
-    home = str(Path.home())
-    if folder.startswith(home):
-        return folder[len(home) :].lstrip("\\/") or folder
-    return folder
-
-
-def result_sentence(job: Job, *, opened: str = "", app: str = "QUILL", offer: bool = False) -> str:
-    """The one result sentence (FUX-04): what was made, where, and what opened.
-
-    "Scribe for Documents made Notes.docx and Notes.brf in Documents\\Scribe
-    for Documents\\Notes. Word is open in QUILL."
-    """
-    names = [Path(p).name for p in job.results]
-    folders = {str(Path(p).parent) for p in job.results}
-    where = short_folder(folders.pop()) if len(folders) == 1 else "your Scribe folder"
-    made = (
-        f"Scribe for Documents made {labels_from_names(names)} in {where}."
-        if names
-        else f"Scribe for Documents finished {job.name}."
-    )
-    if opened:
-        return f"{made} {opened} is open in {app}."
-    if offer and names:
-        return f"{made} Open it from Scribe Conversions."
-    return made
-
-
-def labels_from_names(names: list[str]) -> str:
-    if len(names) <= 1:
-        return "".join(names)
-    return ", ".join(names[:-1]) + " and " + names[-1]
-
-
-def finished_while_closed_sentence(jobs: list[Job], app: str = "QUILL") -> str:
-    """ "Scribe for Documents finished 2 documents while QUILL was closed: Notes and
-    Chapter 2, in Documents\\Scribe for Documents." """
-    from quill.core.scribe.library import title_stem
-
-    titles = [title_stem(j.name) for j in jobs]
-    folders = {short_folder(str(Path(j.results[0]).parent.parent)) for j in jobs if j.results}
-    where = f", in {folders.pop()}" if len(folders) == 1 else ""
-    count = "1 document" if len(jobs) == 1 else f"{len(jobs)} documents"
-    return (
-        f"Scribe for Documents finished {count} while {app} was closed: "
-        f"{labels_from_names(titles)}{where}."
-    )
-
+from quill.core.scribe.queue_text import (  # noqa: E402 - re-exported; it reads Job from here
+    finished_while_closed_sentence,
+    labels_from_names,
+    link_name,
+    pid_alive,
+    result_sentence,
+    scrub_link,
+    short_folder,
+    stage_sentence,
+    status_sentence,
+)
 
 __all__ = [
     "ACTIVE",
@@ -563,8 +525,13 @@ __all__ = [
     "QueueUnreadable",
     "RunnerLock",
     "finished_while_closed_sentence",
+    "labels_from_names",
+    "link_name",
+    "pid_alive",
     "result_sentence",
+    "scrub_link",
     "shared_folder",
+    "short_folder",
     "stage_sentence",
     "status_sentence",
 ]
