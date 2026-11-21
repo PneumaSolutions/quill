@@ -187,7 +187,10 @@ class DocConvertMixin:
 
     def _docconvert_offer_cloud(self, source: Path) -> None:
         """PRD §11.4 Tier 2 -> 3 escalation — the only prompt that mentions
-        cost or upload, shown only when the cloud service is configured."""
+        cost or upload, shown only when the cloud service is configured.
+        Scribe for Documents is offered first (Scribe PRD 8.1.1)."""
+        if self._docconvert_offer_scribe(source):
+            return
         if not self._docconvert_cloud_available():
             return
         wx = self._wx
@@ -204,6 +207,33 @@ class DocConvertMixin:
         )
         if choice == wx.YES:
             self._docconvert_run_cloud(source)
+
+    def _docconvert_offer_scribe(self, source: Path) -> bool:
+        """The Scribe tier after the free ones produced little. True when asked."""
+        from quill.core.scribe.auth import check_allowed
+        from quill.core.scribe.consent import can_convert, describe_source
+        from quill.core.scribe.model import ScribeError
+
+        if not hasattr(self, "_scribe_convert") or not can_convert(source):
+            return False
+        try:
+            check_allowed()
+        except ScribeError:
+            return False
+        wx = self._wx
+        info = describe_source(source)
+        pages = f"about {info.pages} pages" if info.pages else "about one page per page"
+        choice = self._show_message_box(
+            f"The free conversion of {source.name} found little readable text, or the "
+            "layout is complex. Convert it with Scribe for Documents? It rebuilds "
+            f"headings, tables and picture descriptions, uses {pages} of your Scribe "
+            "credit, and opens as a new tab.\n\nYes: choose and send.  No: keep this result.",
+            "Convert with Scribe for Documents?",
+            wx.ICON_QUESTION | wx.YES_NO,
+        )
+        if choice == wx.YES:
+            self._scribe_convert([info], formats="docx", purpose="import")  # type: ignore[attr-defined]
+        return True
 
     def _docconvert_run_cloud(self, source: Path) -> None:
         """Consent-gated Tier 3: never uploads without the §15.1 dialog."""
@@ -462,11 +492,11 @@ class DocConvertMixin:
             )
         else:
             cloud_status = "**Datalab cloud OCR status:** Not configured (optional)."
-        from quill.core.scribe_documents import client_id_configured, signed_in
+        from quill.core.scribe.auth import TokenStore, client_id_configured
 
         if not client_id_configured():
             scribe_status = "**Scribe for Documents status:** Not available in this build yet."
-        elif signed_in():
+        elif TokenStore().signed_in():
             scribe_status = "**Scribe for Documents status:** Signed in."
         else:
             scribe_status = "**Scribe for Documents status:** Not signed in (optional)."

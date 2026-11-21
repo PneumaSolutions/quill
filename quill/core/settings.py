@@ -18,6 +18,7 @@ from quill.core.monitor_policy import (
 from quill.core.paths import app_data_dir
 from quill.core.recovery_triage import DEFAULT_KEEP_DAYS as RECOVERY_KEEP_DAYS
 from quill.core.scanning.settings_fields import load_scanner_fields
+from quill.core.scribe.settings_fields import load_scribe_fields
 from quill.core.session_restore import ASK_MODES
 from quill.core.settings_normalizers import (
     STATUS_BAR_ITEMS,
@@ -884,6 +885,16 @@ class Settings(DictationSettings):  # the windows_dictation_* fields, shared wit
     scanner_dpi: str = "300"  # a choice in Options, so stored as text
     scanner_color: str = "gray"  # "gray" or "color"
     scanner_tool_path: str = ""  # Windows: wia-scan.exe; blank = the bundled one
+    # Scribe for Documents (Options > Scribe for Documents; core/scribe/settings_fields.py).
+    scribe_default_formats: str = "docx"  # comma-separated Scribe format ids
+    scribe_download_folder: str = ""  # blank = Documents\Scribe for Documents
+    scribe_open_results: str = "yes"  # yes / offer / no
+    scribe_offer_low_text_pdf: bool = True
+    scribe_speak_stages: str = "front"  # front / always / never
+    scribe_batch_exception: bool = False  # ships off until Pneuma grants it
+    scribe_last_formats: str = ""
+    scribe_local_settings: dict[str, Any] = field(default_factory=dict)
+    scribe_privacy_told: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Settings:
@@ -2037,6 +2048,7 @@ class Settings(DictationSettings):  # the windows_dictation_* fields, shared wit
             audio_studio_last_journey=audio_studio_last_journey,
             audio_studio_chapter_nudge_ms=audio_studio_chapter_nudge_ms,
             **load_scanner_fields(data),
+            **load_scribe_fields(data),
         )
 
 

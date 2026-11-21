@@ -376,6 +376,7 @@ class MenuBuilderMixin:
             self._menu_label(_("Other Pandoc Format..."), "file.export_other_pandoc"),
         )
         file_menu.AppendSubMenu(export_menu, _("&Export"))  # X belongs to Exit
+        self._append_scribe_file_rows(file_menu, import_menu, export_menu)  # main_frame_scribe.py
 
         file_menu.Append(
             self._id_convert_file,
@@ -1585,6 +1586,7 @@ class MenuBuilderMixin:
         self._id_go_to_document = [wx.NewIdRef() for _ in range(10)]
         self._id_close_other_documents = wx.NewIdRef()
         window_menu = wx.Menu()
+        self._append_scribe_window_rows(window_menu)  # Window > Scribe Conversions
         window_menu.Append(
             self._id_new_tab,
             self._menu_label(_("New &Tab"), "window.new_document_tab"),
@@ -1855,6 +1857,7 @@ class MenuBuilderMixin:
             self._menu_label(_("&Command Palette..."), "app.command_palette"),
         )
         self._append_command_key_item(tools_menu)  # main_frame_command_key
+        self._append_scribe_rows(tools_menu)  # Tools > Scribe for Documents: main_frame_scribe.py
         tools_menu.Append(
             self._id_open_story_studio,
             self._menu_label(_("Story &Studio..."), "story.open_studio"),
@@ -2141,8 +2144,6 @@ class MenuBuilderMixin:
             self._id_review_last_ocr,
             self._menu_label(_("&Review Last OCR Result..."), "tools.review_last_ocr"),
         )
-        conversion_menu.AppendSeparator()
-        self._append_scribe_rows(conversion_menu)  # Scribe for Documents: main_frame_scribe.py
         conversion_menu.AppendSeparator()
         conversion_menu.Append(
             self._id_install_local_ocr,

@@ -8,11 +8,11 @@ the public import surface is unchanged. No ``wx`` imports; pure data.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from quill.core.action_feedback import ACTION_FEEDBACK_LABELS
 from quill.core.inline_note_cue import NOTE_LINE_CUE_CHOICES, NOTE_LINE_CUE_LABELS
 from quill.core.markdown_breaks import HARD_BREAK_LABELS, HARD_BREAK_STYLES
+from quill.core.settings_spec_types import SettingGroup, SettingSpec
+from quill.core.settings_specs_services import SERVICE_GROUPS, SERVICE_SPECS
 from quill.core.structure_announce import (
     HEADING_POSITION_LABELS as _HEADING_POSITION_LABELS,
 )
@@ -36,31 +36,6 @@ _FEEDBACK_CHOICES: tuple[tuple[str, str], ...] = tuple(
 _HEADING_POSITION_CHOICES = tuple(
     (key, _HEADING_POSITION_LABELS[key]) for key in _HEADING_POSITIONS
 )
-
-
-@dataclass(frozen=True, slots=True)
-class SettingSpec:
-    """One tunable setting, mapped to a :class:`Settings` attribute."""
-
-    key: str
-    label: str
-    group: str
-    kind: str  # "bool" | "choice" | "int" | "float" | "text"
-    description: str = ""
-    choices: tuple[tuple[str, str], ...] = ()  # (stored value, human label)
-    minimum: float | None = None
-    maximum: float | None = None
-    feature_id: str = ""
-    keywords: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class SettingGroup:
-    """A labelled cluster of settings, surfaced as one tab."""
-
-    id: str
-    title: str
-    description: str = ""
 
 
 def _ai_tts_voice_choices() -> tuple[tuple[str, str], ...]:
@@ -132,14 +107,7 @@ SETTING_GROUPS: tuple[SettingGroup, ...] = (
         "Spelling",
         "How a misspelling is reported: the F7 review, the letters, and the alert while you type.",
     ),
-    SettingGroup(
-        "scanning",
-        "Scanning",
-        (
-            "Your scanner's resolution and color. File > Scan > Choose Scanner "
-            "picks which scanner QUILL uses."
-        ),
-    ),
+    *SERVICE_GROUPS,  # Scribe for Documents and Scanning: settings_specs_services
     SettingGroup(
         "experimental",
         "Experimental",
@@ -2242,50 +2210,7 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
         ),
         keywords=("file types", "images", "pdf", "documents"),
     ),
-    SettingSpec(
-        "scanner_dpi",
-        "Scan resolution (dots per inch)",
-        "scanning",
-        "choice",
-        (
-            "How finely pages are scanned. 300 is best for reading text; higher "
-            "makes bigger files and slower scans."
-        ),
-        choices=tuple((str(dpi), f"{dpi} dpi") for dpi in (150, 200, 300, 400, 600)),
-        feature_id="core.ocr",
-        keywords=("scan", "scanner", "dpi", "resolution"),
-    ),
-    SettingSpec(
-        "scanner_color",
-        "Scan in",
-        "scanning",
-        "choice",
-        "Gray is best for text and makes smaller files. Choose color for photos.",
-        choices=(("gray", "Gray (best for text)"), ("color", "Color")),
-        feature_id="core.ocr",
-        keywords=("scan", "scanner", "color", "gray", "grey"),
-    ),
-    SettingSpec(
-        "scanner_device_name",
-        "Default scanner",
-        "scanning",
-        "text",
-        (
-            "The scanner QUILL uses without asking. Leave blank to be asked when "
-            "more than one scanner is found. File > Scan > Choose Scanner sets it."
-        ),
-        feature_id="core.ocr",
-        keywords=("scan", "scanner", "default", "device"),
-    ),
-    SettingSpec(
-        "scanner_tool_path",
-        "Scanner tool location (Windows)",
-        "scanning",
-        "text",
-        ("Where wia-scan.exe is. Leave blank to use the one installed with QUILL."),
-        feature_id="core.ocr",
-        keywords=("scan", "scanner", "wia", "tool", "path"),
-    ),
+    *SERVICE_SPECS,  # Scribe for Documents and Scanning: settings_specs_services
     SettingSpec(
         "shell_verb_open",
         "Offer \u201cOpen in QUILL\u201d",

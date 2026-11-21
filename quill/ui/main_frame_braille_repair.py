@@ -38,6 +38,7 @@ class BrailleRepairMixin:
         """
         braille_menu = self._build_braille_menu()
         braille_menu.AppendSubMenu(self._build_braille_repair_menu(), "&Repair")
+        self._append_scribe_braille_row(braille_menu)  # Scribe for Documents (PRD 8.1.5)
         return braille_menu
 
     def _build_braille_repair_menu(self) -> object:

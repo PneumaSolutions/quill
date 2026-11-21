@@ -1312,53 +1312,90 @@ secrets in it, for support requests.
 
 ### Converting with Scribe for Documents
 
-Scribe for Documents is a cloud conversion service from Pneuma Solutions that
-turns a PDF (including a password-protected one), a scan or photo, a Word,
-RTF, OpenDocument, Excel or PowerPoint file, an EPUB, MOBI or text file, or a
-web page into an accessible format. It works with your own Scribe account and
-uses its page credits or subscription. Unlike the Datalab service, QUILL does
-not wait to offer it: you choose it yourself, whenever you want.
+Scribe for Documents, from Pneuma Solutions, rebuilds the hard cases QUILL's
+own converters cannot: a scanned or badly made document, whose headings,
+reading order and tables have to be put back, with descriptions of its
+pictures. It also makes formats QUILL cannot make itself: tagged PDF, Kindle
+(MOBI), DAISY with audio, MP3 and large print. It works with your own Scribe
+account and its pages; QUILL never takes payment. Powered by Scribe for
+Documents.
 
-The commands are in
-**Tools > Reading and Dictation > OCR and Document Conversion**:
+Everything is in **Tools > Scribe for Documents**: Convert a File (QUILL key,
+then B with Shift), Convert This Document, Convert from a Link, My Scribe
+Documents, Conversions (QUILL key, then W with Shift), Sign In, Sign Out, Open
+My Scribe Account in Browser, Options and About Scribe for Documents. Scribe
+also appears where it helps: **File > Import > Convert with Scribe for
+Documents** (the result, Word by default, opens as a new unsaved tab named
+after the document with "(Scribe)"), **File > Export > With Scribe for
+Documents**, **Braille > Translate with Scribe for Documents** (the BRF opens
+in the braille view), **File > My Scribe Documents** and **Window > Scribe
+Conversions**. When Import / Convert Document finds little readable text, or a
+PDF you open has little or none, QUILL offers Scribe beside its own OCR.
 
-- **Sign In to Scribe for Documents...** opens Scribe's own sign-in page in your
-  web browser. Sign in there; Scribe then sends you back to QUILL, which says
-  "Signed in to Scribe for Documents". QUILL never sees your Scribe password,
-  and keeps the sign-in in your system's secure credential store, never in a
-  settings file.
-- **Convert with Scribe for Documents...** asks three questions, each a simple
-  list: what to convert (a file on this computer, the current document, or a
-  web address), what to make, and, for anything other than HTML, which folder
-  to save it in. If you are not signed in yet, it offers to sign you in first.
-- **Sign Out of Scribe for Documents** forgets the sign-in on this computer.
-  Your documents stay in your Scribe library.
+**Signing in.** The first Scribe command signs you in. Scribe's own page opens
+in your browser and a small window says "Your browser is open at Scribe for
+Documents. Sign in there, then come back to QUILL." If your browser did not
+open, or you use another one, press **Copy Sign-in Link** and paste it there.
+When it works the window says, for example, "Signed in to Scribe for Documents
+as Mike Calvo. 100 pages left." Press **Continue** and the command carries on.
+QUILL never sees your password; the sign-in is kept in your system's secure
+store and covers every QUILL app.
 
-The first choice of what to make, **Accessible HTML, opened in QUILL for
-editing**, opens the result as a new, unsaved document named after the source
-with "(converted)" on the end, the same way Import / Convert Document does.
-The other choices are a Word document, a tagged PDF, an EPUB e-book, a DAISY
-talking book, MP3 audio, braille (BRF), offline HTML and Kindle (MOBI); QUILL
-saves those to the folder you chose and tells you the file name. When you
-convert the current document and it is saved in a format Scribe reads, QUILL
-sends that file; otherwise it sends a Word copy of what you have typed, so
-headings and lists come through.
+**The Convert window.** Whichever way you start, the same window opens.
+**What will be sent** comes first and has focus, so read it: the file, its
+size and pages, that it goes to Scribe for Documents (Pneuma Solutions, United
+States) and stays in your Scribe account under your retention setting, that
+pictures may be described by Scribe's AI, and to convert only documents you
+own, have permission for, or that are out of copyright. Before your first
+upload it also says how to delete a document. Then check what you want back:
+Accessible HTML, Word, Tagged PDF, EPUB, Kindle (MOBI), DAISY (text and
+audio), MP3 audio, Braille (BRF) or a web page for offline reading; several
+are fine, and a format already made for a document says "already made, no
+pages used". The settings below follow your choice: Language and voice (with
+the voice's speed), Braille (table, cells per line, pages), Print (large
+print) and Pictures and maths. **Pages used** says how much of your Scribe
+credit this takes; the first full conversion of a document uses its pages and
+every other format of it is free. **Buy Pages** opens Scribe's purchase page.
+Nothing is sent until you press **Send and Convert**. A locked PDF asks for
+its password then, with **Show password**, three tries, and is never saved.
 
-**Every conversion asks for your consent first**, in a window that names
-Scribe for Documents, says the document is kept in your Scribe library where
-you can delete it, and reminds you to think about private, medical, legal or
-financial content. As with Datalab, a file whose name suggests sensitive
-content gets an extra CAUTION line. There is no "don't ask again".
+**While it converts.** Conversions run one document at a time for the whole
+QUILL family, in the background, so you can keep working. QUILL says when it
+starts, each new stage ("Notes.pdf, adding image descriptions."), 25, 50 and
+75 percent, and one sentence at the end, for example "Scribe for Documents
+made Notes.docx in Documents\Scribe for Documents\Notes. Word is open in
+QUILL." Results go to Documents\Scribe for Documents, one folder per
+document, and never overwrite a file. **Scribe Conversions** lists every job
+with its formats and stage; the details field below has the percent, time
+left and the latest message. Enter opens a result; the Applications key lists
+Open Result, Open Folder, Send Next File, Enter Password, Sign In, Buy Pages,
+Cancel Waiting, Retry, Ask for Human Review, Copy Details and Remove from List.
+**Scribe Status** (QUILL key, then U with Shift) says the current job and
+**Repeat Last Scribe Message** (QUILL key, then Y with Shift) says the last
+sentence again. A job that needs you, such as a password or a sign-in, waits
+in Scribe Conversions and says so once; no window pops up. Closing QUILL loses
+nothing: the next QUILL app to start finishes the job. With several files,
+each next file waits for **Send Next File**.
 
-While Scribe works, QUILL speaks and shows each update Scribe sends, such as
-"Scribe for Documents: HTML converting, 40 percent." If the PDF is
-protected, QUILL asks for its password; if the password is wrong, it says so
-and asks again. The document is uploaded only once, however many times it
-asks. If your connection drops, QUILL says so and reconnects by itself; the
-conversion carries on at Scribe in the meantime. If your account is out of
-page credits, QUILL tells you, and you can buy more at scribeit.io. Scribe
-converts one document at a time, so a second conversion waits until the first
-has finished.
+**My Scribe Documents** lists everything in your Scribe account, including
+documents made on the web or the iPhone: Download Formats, Open in QUILL,
+Rename, Move to Trash, and in the Trash Recover and Delete Forever.
+
+**Options > Scribe for Documents** sets the default format, the download
+folder, whether each result opens when it is ready (Yes, Offer or No), whether
+QUILL offers Scribe for a PDF with little text, and how much to say. Safe Mode
+turns every Scribe command off.
+
+### Scanning pages
+
+**File > Scan Pages** (QUILL key, then E with Shift) scans from a flatbed or
+document-feeder scanner. With one scanner QUILL uses it; with several it asks
+once and remembers (File > Choose Scanner changes it). After each page it asks
+"Scan another page?". Then choose what to do with the pages: read the text
+with QUILL's own OCR, put the page into your document as a picture, or save a
+PDF or pictures. **Options > Scanning** sets the resolution (300 dots per inch
+is best for text) and gray or color. On Windows QUILL uses its scanner tool,
+wia-scan.exe; on a Mac it uses Image Capture.
 
 ### Checking and tidying up after OCR
 

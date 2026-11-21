@@ -252,7 +252,14 @@ some of the ways you might ask for it. The Command Palette
 (Ctrl+Shift+P) finds a command by these words as well as by its name.
 Commands that change or lose something ask first.</p>
 <h2 id="quill">QUILL</h2>
-<p>63 commands can be asked for in a sentence here.</p>
+<p>77 commands can be asked for in a sentence here.</p>
+<h3 id="quill-braille">QUILL: Braille</h3>
+<ul>
+<li><strong>Translate to Braille with Scribe for Documents.</strong>
+Turn this document into braille with Scribe’s tables. Say: “translate
+this to braille with scribe”; “make braille with scribe”; “scribe this
+into braille”.</li>
+</ul>
 <h3 id="quill-edit">QUILL: Edit</h3>
 <ul>
 <li><strong>Find (Ctrl+F).</strong> Find words in the document. Say:
@@ -277,6 +284,17 @@ edit”.</li>
 <li><strong>Close Document (Ctrl+W).</strong> Close this document. It
 asks before it does it. Say: “close this document”; “I’m done with this
 file”; “close it”.</li>
+<li><strong>Export with Scribe for Documents.</strong> Save this
+document as tagged PDF, Kindle, DAISY with audio or large print. Say:
+“export this with scribe”; “make a tagged pdf with scribe”; “make a
+daisy book with scribe”.</li>
+<li><strong>Import with Scribe for Documents.</strong> Turn a scanned or
+badly made document into one I can edit. Say: “import a scanned document
+with scribe”; “import with scribe”; “rebuild this scan with
+scribe”.</li>
+<li><strong>My Scribe Documents.</strong> See the documents in my Scribe
+account. Say: “show my scribe documents”; “open my scribe library”;
+“what is in my scribe account”.</li>
 <li><strong>New Document (Ctrl+N).</strong> Start a new blank document.
 Say: “start a new document”; “give me a blank page”; “new file
 please”.</li>
@@ -294,6 +312,9 @@ my documents”; “save every file”; “save everything that is open”.</li>
 <li><strong>Save As (Ctrl+Shift+S).</strong> Save a copy of this
 document under a new name or in another place. Say: “save this under a
 new name”; “save a copy”; “save it somewhere else”.</li>
+<li><strong>Scan Pages (Ctrl+Shift+Grave, Shift+E).</strong> Scan pages
+from my scanner. Say: “scan a page”; “scan some pages”; “scan a
+letter”.</li>
 <li><strong>This Post in the Workbench (Ctrl+Alt+Shift+Grave,
 Shift+H).</strong> Open the WordPress Workbench with this document’s
 post selected. Say: “show this post in the wordpress workbench”; “find
@@ -410,6 +431,20 @@ this document”; “tell me where I am”.</li>
 </ul>
 <h3 id="quill-tools">QUILL: Tools</h3>
 <ul>
+<li><strong>About Scribe for Documents.</strong> Learn what Scribe for
+Documents is. Say: “tell me about scribe”; “what is scribe for
+documents”; “about scribe for documents”.</li>
+<li><strong>Convert a File with Scribe for Documents (Ctrl+Shift+Grave,
+Shift+B).</strong> Make a document accessible with Scribe: Word, PDF,
+braille, audio and more. Say: “convert a file with scribe”; “open scribe
+convert”; “make this pdf accessible with scribe”.</li>
+<li><strong>Convert from a Link with Scribe for Documents.</strong>
+Convert a document from a link to a file. Say: “convert a link with
+scribe”; “scribe a web link”; “convert a pdf link with scribe”.</li>
+<li><strong>Convert This Document with Scribe for Documents.</strong>
+Send the document I have open to Scribe for another format. Say:
+“convert this document with scribe”; “scribe this document”; “send this
+document to scribe”.</li>
 <li><strong>Form Responses (Ctrl+Alt+Shift+Grave, F).</strong> Read the
 responses people sent to a form on your WordPress site. Say: “show my
 form responses”; “who filled in the contact form”; “read the newest form
@@ -424,6 +459,19 @@ sites”.</li>
 <li><strong>Read Aloud (Ctrl+Shift+Grave, R).</strong> Read the document
 aloud, or pause reading. Say: “read this to me”; “read the document out
 loud”; “pause the reading”.</li>
+<li><strong>Repeat Last Scribe Message (Ctrl+Shift+Grave,
+Shift+Y).</strong> Hear the last Scribe message again. Say: “repeat the
+last scribe message”; “what did scribe say”; “say that scribe message
+again”.</li>
+<li><strong>Scribe for Documents Options.</strong> Change how Scribe
+conversions behave. Say: “open scribe options”; “change scribe
+settings”; “scribe preferences”.</li>
+<li><strong>Scribe Status (Ctrl+Shift+Grave, Shift+U).</strong> Hear
+where the current Scribe conversion is. Say: “what is scribe doing”;
+“scribe status”; “how far along is scribe”.</li>
+<li><strong>Sign In to Scribe for Documents.</strong> Sign in to my
+Scribe account. Say: “sign in to scribe”; “log in to scribe”; “connect
+my scribe account”.</li>
 <li><strong>Sounds On or Off (Alt+Shift+M).</strong> Turn QUILL’s sounds
 on or off. Say: “turn the sounds off”; “stop the beeps”; “sounds back
 on”.</li>
@@ -468,6 +516,12 @@ screen”; “magnify the text”.</li>
 without changing the document. Say: “zoom out”; “make it smaller on
 screen”; “less magnified”.</li>
 </ul>
+<h3 id="quill-window">QUILL: Window</h3>
+<ul>
+<li><strong>Scribe Conversions (Ctrl+Shift+Grave, Shift+W).</strong> See
+how my Scribe conversions are going. Say: “show scribe conversions”;
+“how are my scribe conversions doing”; “open the scribe queue”.</li>
+</ul>
 <h3 id="quill-only-from-its-menu-or-key">QUILL: only from its menu or
 key</h3>
 <p>These are never done from a sentence, because they send, delete, sign
@@ -484,6 +538,8 @@ key.</p>
 <li>Exit: File, Exit.</li>
 <li>Language Servers: Navigate, Code, Language Servers.</li>
 <li>Open a Web Address: File, Open a Web Address.</li>
+<li>Open My Scribe Account in Browser: Tools, Scribe for Documents, Open
+My Scribe Account in Browser.</li>
 <li>Preferences Hub: Tools, Preferences Hub.</li>
 <li>Replace All: Edit, Replace.</li>
 <li>Report the Editor Surface: Help, Troubleshooting.</li>
@@ -493,6 +549,8 @@ key.</p>
 <li>Say or Type a Command: F11.</li>
 <li>Send to Tray: View, Send to Tray.</li>
 <li>Settings: Tools, Settings.</li>
+<li>Sign Out of Scribe for Documents: Tools, Scribe for Documents, Sign
+Out.</li>
 <li>Speech and Braille Self-Test: Help, Troubleshooting.</li>
 <li>Where Am I, in Detail: Navigate, Where Am I.</li>
 </ul>

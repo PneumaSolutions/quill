@@ -107,6 +107,7 @@ class Job:
     created: float = field(default_factory=time.time)
     updated: float = field(default_factory=time.time)
     resumed: bool = False  # picked up by an app other than the one that started it
+    purpose: str = ""  # "import": open as a new tab; "braille": the braille view
     password_tries: int = 0
 
     @classmethod
@@ -129,15 +130,17 @@ class Job:
     def remaining(self) -> list[str]:
         return [f for f in self.formats if f not in self.done_formats]
 
-    def row_text(self) -> str:
-        """The list row: changes only when the stage changes (PRD 7.4)."""
-        what = labels_sentence(self.formats)
-        state = STATE_WORDS.get(self.state, self.state)
+    def stage_text(self) -> str:
+        """Where the job is now, in words: the Stage column."""
         if self.state == CONVERTING and self.stage:
             from quill.core.scribe.model import stage_words
 
-            state = f"{format_label(self.current_format)} {stage_words(self.stage)}"
-        return f"{self.name}: {state} ({what})"
+            return f"{format_label(self.current_format)} {stage_words(self.stage)}"
+        return STATE_WORDS.get(self.state, self.state)
+
+    def row_text(self) -> str:
+        """The list row: changes only when the stage changes (PRD 7.4)."""
+        return f"{self.name}: {self.stage_text()} ({labels_sentence(self.formats)})"
 
     def details(self) -> str:
         """The details field: percent, time left and the latest full message."""

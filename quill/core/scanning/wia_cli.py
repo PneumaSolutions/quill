@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 TOOL_NAME = "wia-scan.exe"
 TOOL_ENV = "QUILL_SCANNER_TOOL"
-LIST_TIMEOUT_S = 60.0
+LIST_TIMEOUT_S = 120.0  # the first look for network (eSCL) scanners can be slow
 SCAN_TIMEOUT_S = 900.0
 _POLL_S = 0.2
 

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc 3.12.1" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <title>Scribe for Documents in QUILL: design note</title>
+  <title>Scribe for Documents in QUILL: implementation notes</title>
   <style>
     /* Default styles provided by pandoc.
     ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -242,175 +242,100 @@
 <body>
 <a class="skip-link" href="#main-content">Skip to main content</a>
 <main id="main-content" tabindex="-1">
-<h1 id="scribe-for-documents-in-quill-design-note">Scribe for Documents
-in QUILL: design note</h1>
-<p>This note explains how QUILL converts documents with Scribe for
-Documents, the cloud conversion service Pneuma Solutions runs at
-scribeit.io, and why it is built the way it is. The user-facing
-description is in Chapter 3 of the user guide, under “Converting with
-Scribe for Documents”.</p>
-<h2 id="what-it-does">What it does</h2>
-<p>Three commands sit in Tools &gt; Reading and Dictation &gt; OCR and
-Document Conversion, beside the Datalab cloud tier:</p>
-<ul>
-<li><strong>Convert with Scribe for Documents…</strong> converts a file,
-the current document or a web address. Accessible HTML, the default,
-opens in a new unsaved QUILL document for editing. Word, tagged PDF,
-EPUB, DAISY, MP3, braille (BRF), offline HTML and MOBI are saved to a
-folder the person chooses.</li>
-<li><strong>Sign In to Scribe for Documents…</strong> runs OAuth 2.0
-with PKCE in the system browser.</li>
-<li><strong>Sign Out of Scribe for Documents</strong> forgets the stored
-tokens.</li>
-</ul>
-<p>None of the three has a default key. They are once-in-a-while
-commands reached from the menu or the command palette, like the other
-cloud OCR commands beside them.</p>
-<h2 id="why-a-core-feature-and-not-a-bundled-quillin">Why a core feature
-and not a bundled Quillin</h2>
-<p>The bundled transcription Quillins (Groq, ElevenLabs) only
-<em>declare</em> a provider in their manifest; the host owns every byte
-of the upload, under the network egress audit. Doing the same for Scribe
-would have meant a new contribution type (a schema change, validation,
-the model, quillin_lint rules) whose only implementation is still host
-code. A manifest with nothing in it but a declaration adds a moving part
-without moving any code out of the host.</p>
-<p>QUILL’s existing cloud document conversion, Datalab, is already a
-core feature: a wx-free client in <code>quill/core/datalab_ocr.py</code>
-and its UI in the <code>main_frame_docconvert.py</code> mixin. Scribe
-follows that shape exactly, so a reviewer who knows one knows the other.
-Scribe also needs a browser sign-in with a loopback listener, a
-secret-vault token store and a long-lived WebSocket, none of which a
-Quillin sandbox could hold.</p>
+<h1 id="scribe-for-documents-in-quill-implementation-notes">Scribe for
+Documents in QUILL: implementation notes</h1>
+<p>The specification is Jeff Bishop’s Scribe PRD (“Scribe for Documents
+in the QUILL family”, 2026-11-20). This note records how QUILL’s Phase 1
+build maps onto it, where the real service behaves differently from what
+the PRD could know, and what is left. The user-facing description is in
+Chapter 3 of the user guide, under “Converting with Scribe for
+Documents”.</p>
 <h2 id="where-the-code-is">Where the code is</h2>
+<p>Shared foundation, <code>quill/core/scribe/</code> (wx-free, each
+module under 600 lines):</p>
 <ul>
-<li><code>quill/core/scribe_account.py</code> (wx-free): the client ID
-and redirect, the token store (through <code>quill.core.secrets</code>),
-the error sentences, and the authenticated client.</li>
-<li><code>quill/core/scribe_documents.py</code> (wx-free): the input and
-output format tables and <code>run_conversion</code>, which uploads,
-converts, follows the status channel and downloads. It re-exports the
-account module, so callers import one module.</li>
-<li><code>quill/core/scribe_signin.py</code> (wx-free): the one-request
-loopback listener on <code>127.0.0.1</code> and
-<code>sign_in</code>.</li>
-<li><code>quill/ui/main_frame_scribe.py</code>: the
-<code>ScribeDocumentsMixin</code> with the three commands. It asks
-questions with stock dialogs and runs every network step on the
-background task pool.</li>
-<li>Tests: <code>tests/unit/core/test_scribe_documents.py</code>,
-<code>tests/unit/core/test_scribe_signin.py</code>,
-<code>tests/unit/ui/test_main_frame_scribe.py</code>, with a fake
-<code>scribe_client</code> in <code>tests/scribe_fakes.py</code>. No
-test talks to Scribe.</li>
+<li><code>model.py</code>: formats, build order, stages, settings
+groups, <code>DocumentSettings</code>, and the section 11 errors
+(<code>QUILL-SCRIBE-SIGNIN</code>, <code>-PAGES</code>,
+<code>-PASSWORD</code>, <code>-BUSY</code>, <code>-GONE</code>,
+<code>-OFFLINE</code>, <code>-SIGNIN-LOCAL</code>, <code>-SAVE</code>,
+<code>-OFF</code>, <code>-FAILED</code>).</li>
+<li><code>http.py</code>: the one <code>urllib</code> door every REST
+call goes through (GATE-9).</li>
+<li><code>auth.py</code>: PKCE sign-in, the loopback listener, tokens in
+the secret vault.</li>
+<li><code>client.py</code>: the REST API. <code>channel.py</code>: the
+Phoenix channel.</li>
+<li><code>queue.py</code> and <code>runner.py</code>: the family queue
+and the one runner.</li>
+<li><code>library.py</code>: download folders and which document made
+which file.</li>
+<li><code>consent.py</code>: the Convert dialog’s wording;
+<code>settings_fields.py</code>: Options; <code>keys.py</code>: the four
+default keys.</li>
 </ul>
-<h2 id="the-client-and-its-dependency">The client and its
-dependency</h2>
-<p>QUILL uses the official <code>scribe-client</code> package from PyPI
-(a Rust core with Python bindings, MIT or Apache 2.0, wheels for
-Windows, macOS and Linux). It is imported lazily. If it is missing, the
-command says so in a sentence instead of failing. It is not yet in
-<code>pyproject.toml</code> or the shared Windows runtime; adding it
-there is part of getting the feature ready to ship.</p>
-<h2 id="the-client-id">The client ID</h2>
-<p>Scribe registers each app at scribeit.io/developer as a public client
-that uses PKCE and has no secret. <code>SCRIBE_CLIENT_ID</code> in
-<code>quill/core/scribe_account.py</code> holds a placeholder until
-Pneuma Solutions registers QUILL and supplies the real ID, with the
-redirect URI <code>http://127.0.0.1:47613/callback</code>. While the
-placeholder is there, every command says the build is not registered yet
-and opens nothing. The environment variable
-<code>QUILL_SCRIBE_CLIENT_ID</code> overrides it for development.</p>
-<h2 id="scribes-developer-policy-and-how-quill-meets-it">Scribe’s
-developer policy, and how QUILL meets it</h2>
+<p>QUILL’s surfaces: <code>quill/ui/main_frame_scribe.py</code>
+(commands, menus, entry points), <code>main_frame_scribe_queue.py</code>
+(runner, speech, results), and the windows
+<code>scribe_signin_dialog.py</code>,
+<code>scribe_convert_dialog.py</code> with
+<code>scribe_settings_panel.py</code>,
+<code>scribe_conversions_window.py</code> and
+<code>scribe_documents_dialog.py</code>. Tests run QUILL’s real client
+against <code>tests/scribe_fake_server.py</code>, a real HTTP and
+WebSocket fake.</p>
+<h2 id="where-the-real-service-differs-from-the-prd">Where the real
+service differs from the PRD</h2>
+<p>Read from Pneuma’s server and client source on 2026-11-21.</p>
 <ul>
-<li><strong>Say it is powered by Scribe for Documents.</strong> The
-format question, the consent window, the services overview and the F1
-help all say so.</li>
-<li><strong>Open the sign-in page unmodified in the system
-browser.</strong> QUILL opens exactly the address
-<code>scribe_client.AuthClient.authorization_url</code> builds, with
-Python’s <code>webbrowser</code>, and never embeds it.</li>
-<li><strong>One document at a time.</strong> A job is one file or one
-address. A second Convert while one is running is refused with a
-sentence.</li>
-<li><strong>Pass along every status update.</strong> Each distinct
-status event Scribe sends becomes a sentence, such as “Scribe for
-Documents: HTML converting, 40 percent.”, which goes to the status bar
-and is spoken. Only exact repeats are dropped.</li>
+<li><strong>Redirect path.</strong> QUILL’s approved registration is
+<code>http://127.0.0.1:47613/callback</code>. The server ignores the
+port for a loopback address but matches the path exactly, so QUILL
+listens on any free port at <code>/callback</code>, not
+<code>/scribe/callback</code>.</li>
+<li><strong>Accessible HTML.</strong> The API does not hand out the
+<code>html</code> output for download. QUILL converts
+<code>offline_html</code> (the same document with its pictures), unpacks
+it next to the other results, and opens its page.</li>
+<li><strong>Repeat formats are free.</strong> Pages are charged once per
+document, for its first full conversion; the dialog’s “already made, no
+pages used” is right, and so is “further formats are free”.</li>
+<li><strong>DAISY</strong> is DAISY 3 (an NCX), which Media Player
+already reads.</li>
+<li><strong>Rate limit.</strong> Uploads and
+<code>start_conversion</code> share one bucket of 10 a minute per
+person, so a job asks the REST API whether a format is already made
+before starting it.</li>
+<li><strong>Pages left</strong> come from <code>/api/billing</code>;
+<code>/api/account_info</code> has no count.</li>
+<li><strong>Logging.</strong> <code>websockets</code> logs the request
+line (with the token) and every frame (with a PDF password) at DEBUG;
+QUILL gives it a logger held at WARNING.</li>
 </ul>
-<h2 id="consent-privacy-and-network-egress">Consent, privacy and network
-egress</h2>
+<h2 id="phase-1-done">Phase 1: done</h2>
+<p>Sign-in (7.2), the Convert dialog (7.3), the family queue and Scribe
+Conversions (7.4, 7.4a), My Scribe Documents (7.5), download folders and
+the local record (7.6), Options &gt; Scribe for Documents (7.7), and in
+QUILL the Import tier, the low-text PDF offer, Export with Scribe,
+Braille &gt; Translate with Scribe, and Tools &gt; Scribe for Documents
+as 8.1.8 lists it.</p>
+<h2 id="phase-1-left">Phase 1: left</h2>
 <ul>
-<li>A consent window opens before every conversion. It names the
-service, says the document is kept in the person’s Scribe library and
-uses their page credits, and adds the same CAUTION line as Datalab for a
-sensitive-looking file name. There is no “don’t ask again”.</li>
-<li>Tokens are stored in the OS secret vault through
-<code>quill.core.secrets</code> (namespace <code>scribe</code>), never
-in settings. Sign Out wipes the namespace.</li>
-<li>Safe Mode refuses every Scribe command.</li>
-<li>Logs carry document ids, formats and stages only.</li>
-<li><code>scribe-client</code> does its HTTPS and WebSocket work inside
-a compiled extension, so the AST egress scan cannot see it. The two
-integration points, <code>scribe_account._make_client</code> and
-<code>scribe_signin.sign_in</code>, are in <code>_NON_AST_EGRESS</code>
-(through <code>quill/tools/network_egress_entries_scribe.py</code>) with
-their rationale.</li>
-<li>The loopback listener binds <code>127.0.0.1</code> on the registered
-port, serves one request on <code>/callback</code>, never logs the
-request line (it carries the code), and on Windows asks for the port
-exclusively so another program cannot answer in its place.</li>
-</ul>
-<h2 id="status-passwords-and-lost-connections">Status, passwords and
-lost connections</h2>
-<ul>
-<li>A new document is busy with its preview at first, so starting the
-conversion waits for that to finish and then tries again.</li>
-<li>A protected PDF ends the background job with “password needed”.
-QUILL asks for the password with a native password box, then resumes
-with the same document id, so nothing is uploaded twice. A wrong
-password is reported as wrong and asked again.</li>
-<li>If the live channel drops, QUILL says so and reconnects up to five
-times with growing pauses. Each time it first asks Scribe for the
-document’s outputs, because the conversion carries on without the
-channel and may have finished meanwhile; that covers conversions longer
-than the channel’s idle limit of about 66 seconds.</li>
-<li>Out of page credits, an expired sign-in, rate limits and a damaged
-file each have their own sentence. An expired sign-in offers to sign in
-again.</li>
-</ul>
-<h2 id="accessibility">Accessibility</h2>
-<ul>
-<li>Every question is a stock control (a single-choice list, the file
-and folder boxes, a text box, a password box) run through
-<code>_show_modal_dialog</code> and registered in the dialog inventory.
-The text and password boxes carry F1 help.</li>
-<li>Menu items carry access keys that are free in their submenu (C, G
-and O). The mixin adds its own rows and registrations
-(<code>_append_scribe_rows</code>,
-<code>_register_scribe_commands</code>), so the menu and command modules
-grow by one line each.</li>
-<li>Announcements say only what the screen reader cannot know: status
-updates, the result, and errors.</li>
-<li>The page the browser shows after sign-in has a language, a title, a
-main landmark and one heading.</li>
-</ul>
-<h2 id="still-to-do-before-release">Still to do before release</h2>
-<ul>
-<li>The real client ID from Pneuma Solutions, and the redirect
-registered.</li>
-<li><code>scribe-client</code> added to <code>pyproject.toml</code>,
-<code>requirements.txt</code>, <code>uv.lock</code> and the shared
-Windows runtime inventory.</li>
-<li>A screen-reader pass on Windows with JAWS and NVDA, and on macOS
-with VoiceOver, against a real Scribe account.</li>
-<li>The Python binding does not hand back tokens it refreshes on its own
-during a long conversion. QUILL refreshes explicitly before each
-conversion and stores the result, but a token rotated mid-conversion is
-lost, which costs one extra sign-in. A small change to
-<code>scribe-client</code> (expose the current token set) would remove
-that.</li>
+<li>Play Sample beside the voice (7.3) is not built: the voice list has
+samples, but QUILL has no MP3 playback path the dialog can use without a
+new dependency.</li>
+<li>Enter Password from a Scribe Conversions window in an app that is
+not the one running the queue keeps the password in that app; the
+running app does not see it. In practice QUILL is the only app with
+Scribe in Phase 1.</li>
+<li>MP3 and DAISY results open with the computer’s default player rather
+than Quill Media Player (Phase 2 adds Player’s own entry point).</li>
+<li>Opening a Word result as rich text (8.1.1) uses QUILL’s import
+readers, so it opens as Markdown text.</li>
+<li>The streaming read tab (8.1.3) and the watch-folder action (8.1.6)
+are Phase 3 in the PRD and not started.</li>
+<li>Screen-reader passes with NVDA, JAWS and Narrator, and the live test
+script on a real Scribe account, are still to do.</li>
 </ul>
 </main>
 </body>
