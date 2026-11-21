@@ -145,6 +145,9 @@ class _ConvertDialog:
         self.request = type(self).request
         type(self).last = self
 
+    def show(self):
+        return self.request if self.dialog.answer == 1 else None
+
     def close(self) -> None:
         pass
 
@@ -200,7 +203,7 @@ def test_safe_mode_turns_every_command_off(scribe, monkeypatch, pdf) -> None:
     host = _Host()
     host.scribe_convert_file()
     host.scribe_convert_document()
-    assert host.announcements[0] == "Scribe for Documents is off in Safe Mode."
+    assert host.statuses[0] == "Scribe for Documents is off in Safe Mode."
     assert _ConvertDialog.last is None or _ConvertDialog.last.sources != []
     assert q.JobQueue().jobs() == []
 

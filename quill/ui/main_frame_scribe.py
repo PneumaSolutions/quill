@@ -296,7 +296,6 @@ class ScribeDocumentsMixin:
             check_allowed()
         except ScribeError as exc:
             self._set_status(plain(exc))
-            self._announce(plain(exc))
             return False
         return True
 
@@ -320,7 +319,6 @@ class ScribeDocumentsMixin:
         """The Convert dialog for ``sources``, then the family queue."""
         from quill.core.scribe.model import DocumentSettings
         from quill.core.scribe.settings_fields import chosen_formats
-        from quill.ui.scribe_convert_dialog import TITLE as DIALOG_TITLE
         from quill.ui.scribe_convert_dialog import ScribeConvertDialog
 
         def _again() -> None:
@@ -343,13 +341,12 @@ class ScribeDocumentsMixin:
             ai_off=self._scribe_ai_off(),
         )
         try:
-            if self._show_modal_dialog(dialog.dialog, DIALOG_TITLE) != self._wx.ID_OK:
-                self._set_status("Nothing was sent to Scribe for Documents.")
-                return
-            request = dialog.request
+            request = dialog.show()
         finally:
             dialog.close()
-        if request is not None:
+        if request is None:
+            self._set_status("Nothing was sent to Scribe for Documents.")
+        else:
             self._scribe_queue_request(sources, request, purpose=purpose, reuse=reuse)
 
     def _scribe_queue_request(

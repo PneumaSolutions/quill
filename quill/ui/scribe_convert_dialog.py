@@ -113,6 +113,7 @@ class ScribeConvertDialog:
             self.checks[item.id] = box
         body.Add(formats_box, 0, wx.EXPAND | wx.ALL, 6)
 
+        body.Add(wx.StaticText(self.panel, label="Settings for these formats:"), 0, wx.LEFT, 6)
         self.summary = wx.TextCtrl(self.panel, style=wx.TE_READONLY)
         self.summary.SetName("Settings below")
         self.summary.SetHelpText("Which settings groups the chosen formats use.")
@@ -270,6 +271,12 @@ class ScribeConvertDialog:
         )
         self.dialog.EndModal(wx.ID_OK)
 
+    def show(self) -> ConvertRequest | None:
+        """Show modally through the host's contract; the request, or None on Cancel."""
+        if self.host._show_modal_dialog(self.dialog, TITLE) != self.wx.ID_OK:
+            return None
+        return self.request
+
     def close(self) -> None:
         self.dialog.Destroy()
 
@@ -319,11 +326,14 @@ class PasswordDialog:
         self.hidden = wx.TextCtrl(self.dialog, style=wx.TE_PASSWORD)
         self.hidden.SetName(f"Password for {name}")
         self.hidden.SetHelpText("Used for this one upload; QUILL never saves or logs it.")
+        self.shown_label = wx.StaticText(self.dialog, label=f"Password for {name} (shown):")
+        self.shown_label.Hide()
         self.shown = wx.TextCtrl(self.dialog)
         self.shown.SetName(f"Password for {name}")
         self.shown.SetHelpText("The password as plain text, so you can check what you typed.")
         self.shown.Hide()
         root.Add(self.hidden, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+        root.Add(self.shown_label, 0, wx.LEFT | wx.RIGHT, 8)
         root.Add(self.shown, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
         self.show = wx.CheckBox(self.dialog, label="&Show password")
         self.show.SetHelpText("Show the password as text, for braille and typing echo.")
@@ -346,11 +356,13 @@ class PasswordDialog:
         if self.show.GetValue():
             self.shown.SetValue(self.hidden.GetValue())
             self.hidden.Hide()
+            self.shown_label.Show()
             self.shown.Show()
             self.shown.SetFocus()
         else:
             self.hidden.SetValue(self.shown.GetValue())
             self.shown.Hide()
+            self.shown_label.Hide()
             self.hidden.Show()
             self.hidden.SetFocus()
         self.dialog.Layout()

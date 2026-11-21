@@ -908,21 +908,22 @@
 {"text": "erase all my work", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
 {"text": "uninstall the app", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
 {"text": "push to GitHub", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "held_out"}
+{"text": "AI Hub", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
 {"text": "updates", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
 {"text": "new version", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
 {"text": "Say or Type a Command", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
-{"text": "clipboard tray", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
-{"text": "multi copy", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "held_out"}
+{"text": "clipboard tray", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "held_out"}
+{"text": "multi copy", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
 {"text": "quit", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
 {"text": "leave", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
 {"text": "web address", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
-{"text": "link", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
-{"text": "settings", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "held_out"}
+{"text": "link", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "held_out"}
+{"text": "settings", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
 {"text": "options", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
 {"text": "theme", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
 {"text": "light", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
-{"text": "language servers", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
-{"text": "code servers", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "held_out"}
+{"text": "language servers", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "held_out"}
+{"text": "code servers", "app": "lite", "mode": "typed", "expect": {"refuse": "never"}, "set": "train"}
 {"text": "go back to live", "app": "lite", "mode": "typed", "expect": {"refuse": "other_app", "pointer": "radio"}, "set": "train"}
 {"text": "what song is this", "app": "lite", "mode": "typed", "expect": {"refuse": "other_app", "pointer": "radio"}, "set": "train"}
 {"text": "wake me at 7", "app": "lite", "mode": "typed", "expect": {"refuse": "other_app", "pointer": "radio"}, "set": "train"}

@@ -62,11 +62,15 @@ class ScribeDocumentsDialog:
         )):
             self.list.InsertColumn(index, title, width=dip_size(self.dialog, width, 1)[0])
         root.Add(self.list, 1, wx.EXPAND | wx.ALL, 8)
+        self.empty_label = wx.StaticText(self.dialog, label="Documents in your account:")
+        self.empty_label.Hide()
+        root.Add(self.empty_label, 0, wx.LEFT, 8)
         self.empty = wx.TextCtrl(self.dialog, value=EMPTY, style=wx.TE_READONLY)
         self.empty.SetName("Documents")
         self.empty.SetHelpText("There is nothing to list.")
         self.empty.Hide()
         root.Add(self.empty, 0, wx.EXPAND | wx.ALL, 8)
+        root.Add(wx.StaticText(self.dialog, label="Pages &left:"), 0, wx.LEFT, 8)
         self.pages = wx.TextCtrl(self.dialog, style=wx.TE_READONLY)
         self.pages.SetName("Pages left")
         self.pages.SetHelpText("How many Scribe pages you have left.")
@@ -172,6 +176,7 @@ class ScribeDocumentsDialog:
         self.list.Show(has)
         self.empty.ChangeValue(EMPTY_TRASH if self.in_trash else EMPTY)
         self.empty.Show(not has)
+        self.empty_label.Show(not has)
         for key in ("download", "open", "rename", "trash", "review"):
             self.buttons[key].Show(not self.in_trash)
             self.buttons[key].Enable(has)

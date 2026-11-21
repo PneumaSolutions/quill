@@ -260,6 +260,7 @@ class ScribeQueueMixin:
         title = "About Scribe for Documents"
         dialog = wx.Dialog(self.frame, title=title)
         root = wx.BoxSizer(wx.VERTICAL)
+        root.Add(wx.StaticText(dialog, label="&About:"), 0, wx.LEFT | wx.TOP, 8)
         text = wx.TextCtrl(dialog, style=wx.TE_READONLY | wx.TE_MULTILINE, value=ABOUT_TEXT)
         text.SetName("About Scribe for Documents")
         text.SetHelpText("What Scribe for Documents is and how QUILL uses it.")
