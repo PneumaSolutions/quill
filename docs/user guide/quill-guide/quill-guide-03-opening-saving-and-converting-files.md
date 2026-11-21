@@ -1401,8 +1401,19 @@ once and remembers (Tools > Choose Scanner changes it). After each page it asks
 "Scan another page?". Then choose what to do with the pages: read the text
 with QUILL's own OCR, put the page into your document as a picture, or save a
 PDF or pictures. **Options > Scanning** sets the resolution (300 dots per inch
-is best for text) and gray or color. On Windows QUILL uses its scanner tool,
-wia-scan.exe; on a Mac it uses Image Capture.
+is best for text) and gray or color.
+
+QUILL scans through pagescan, a small scanner tool from Pneuma Solutions that
+is installed with QUILL in its tools\scanner folder, on Windows and on a Mac.
+It works with USB scanners and with network scanners, including ones that use
+Windows' or the Mac's built-in AirScan support. If the scanner has a glass and
+a document feeder, QUILL scans from the glass; a scanner with only a feeder
+scans from the feeder. If QUILL says its scanner tool is not installed,
+reinstall QUILL, or put the tool's location in **Options > Scanning**, Scanner
+tool location. If no scanner is found, check that the scanner is turned on and
+that the computer's own scanning app (Windows Scan, or Image Capture on a Mac)
+can see it. On a Mac, if a network scanner does not appear, check System
+Settings, Privacy and Security, Local Network, and allow QUILL there.
 
 ### Checking and tidying up after OCR
 

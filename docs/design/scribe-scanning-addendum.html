@@ -258,8 +258,7 @@ Document route), insert the page into the document as a picture (Insert
 Image, with the alt text field focused), or save one PDF or the
 pictures. <strong>Tools &gt; Choose Scanner</strong> picks the scanner;
 with one, QUILL uses it silently. <strong>Options &gt; Scanning</strong>
-has the resolution, gray or color, and the Windows scanner tool’s
-location.</p>
+has the resolution, gray or color, and the scanner tool’s location.</p>
 <p>In the Scribe PRD’s terms it is a new entry point that feeds Import /
 Convert, and so the Scribe tier: a scanned PDF that QUILL’s OCR reads
 poorly gets the same Scribe offer as any other import.</p>
@@ -267,16 +266,46 @@ poorly gets the same Scribe offer as any other import.</p>
 <ul>
 <li><code>quill/core/scanning/</code> (wx-free): a
 <code>ScannerBackend</code> interface, the shared logic (choose a
-scanner, collect pages, make a PDF), and two backends.</li>
-<li><strong>Windows:</strong> the open-source <code>wia-scan.exe</code>
-(Pneuma’s open-scanner project, one Rust executable over Windows Image
-Acquisition 2.0), run through <code>safe_subprocess</code> with no
-console window and a timeout, on a worker thread, so a scanner driver
-that hangs takes the tool down, never QUILL. It prints one JSON object
-per command. Tested on a network HP LaserJet MFP.</li>
-<li><strong>macOS:</strong> ImageCaptureCore through PyObjC
-(<code>pyobjc-framework-ImageCaptureCore</code>, an optional,
-darwin-only dependency). Untested on real hardware.</li>
+scanner, collect pages, make a PDF), and one backend,
+<code>pagescan_cli.py</code>, used on Windows and macOS alike.</li>
+<li><strong>The scanner tool is pagescan</strong> (Pneuma Solutions,
+MIT, <a
+href="https://github.com/PneumaSolutions/pagescan">PneumaSolutions/pagescan</a>),
+one small Rust executable with no runtime dependencies: Windows Image
+Acquisition 2.0 with a WIA 1.0 fallback on Windows, Apple’s
+ImageCaptureCore on macOS. QUILL runs it through
+<code>safe_subprocess</code> with no console window and a timeout, on a
+worker thread, so a scanner driver that hangs takes the tool down, never
+QUILL. On a Mac the separate process also gives ImageCaptureCore the
+main thread it needs, so no PyObjC is involved. It prints one JSON
+object per command (its <code>docs/protocol.md</code>); QUILL ignores
+anything on stderr and passes the tool’s <code>error</code> sentence on
+to the listener.</li>
+<li><strong>Source by kind.</strong> Every scan passes
+<code>--source flatbed</code> or <code>--source feeder</code>, never a
+source id, because Windows source ids can change between runs: the glass
+when the scanner has one, else the feeder.</li>
+<li><strong>Where QUILL finds it,</strong> first match wins: Options
+&gt; Scanning (a file or a folder), <code>QUILL_SCANNER_TOOL</code>,
+<code>tools\scanner</code> beside an installed QUILL,
+<code>Contents/Resources/tools/scanner</code> in the Mac app,
+<code>tools/scanner</code> in a source checkout, the data folder, then
+<code>PATH</code>. On Windows each place also accepts the tool’s old
+name, <code>wia-scan.exe</code>, so a computer set up before the rename
+keeps scanning.</li>
+<li><strong>Bundling.</strong> The Windows build copies
+<code>pagescan.exe</code> into <code>portable\tools\scanner</code>
+(<code>--scanner-tool</code>, or <code>tools\scanner\pagescan.exe</code>
+in the checkout), and the Mac build puts
+<code>tools/scanner/pagescan</code> into the app’s Resources and signs
+it. The binary is prebuilt: download it from the pagescan GitHub
+release, or build it with <code>cargo build --release</code> (for
+Windows from Linux, <code>--target x86_64-pc-windows-gnu</code>). A
+build without it still works and Scan Pages says the tool is
+missing.</li>
+<li><strong>Tested</strong> on Windows with a network HP Color LaserJet
+Pro MFP 3301 (eSCL). The macOS side of pagescan has not yet been run on
+a Mac with a scanner.</li>
 <li><code>quill/ui/main_frame_scanning.py</code>: File &gt; Import &gt;
 Scan Pages and Choose Scanner, and <code>start_scan</code>, which any
 feature that wants pages can call.</li>
@@ -288,8 +317,9 @@ pages directly (a “Scan pages” source), or is the Import route
 enough?</li>
 <li>Should QUILL Lite get File &gt; Import &gt; Scan Pages too (rule 10:
 QUILL has it first)?</li>
-<li>Is bundling <code>wia-scan.exe</code> in the installer’s
-<code>tools\scanner</code> folder the right place?</li>
+<li>Is bundling <code>pagescan.exe</code> in the installer’s
+<code>tools\scanner</code> folder (and <code>pagescan</code> in the Mac
+app’s Resources) the right place?</li>
 </ol>
 </main>
 </body>

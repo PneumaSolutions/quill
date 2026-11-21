@@ -424,6 +424,17 @@ itself and the Player gets its <code>.ncx</code>, which it now opens
 from the command line or a second launch without a picker. Without the
 Player, the computer’s default player opens them.</li>
 </ul>
+<h2 id="scanning-as-a-way-in">Scanning as a way in</h2>
+<p>File &gt; Import &gt; Scan Pages feeds the same Import tier, so a
+scanned page that QUILL’s OCR reads poorly gets the Scribe offer like
+any other import. The scanner tool is pagescan (Pneuma Solutions, MIT),
+one executable QUILL runs as a separate process on both Windows and
+macOS through <code>quill/core/scanning/pagescan_cli.py</code>; it
+replaced the Windows-only <code>wia-scan.exe</code> and the PyObjC
+ImageCaptureCore backend on 2026-11-21. QUILL always names the source by
+kind (<code>--source flatbed</code> or <code>--source feeder</code>),
+never by id. The design, bundling and open questions are in
+<code>scribe-scanning-addendum.md</code>.</p>
 <h2 id="phase-1-left">Phase 1: left</h2>
 <ul>
 <li>A Word result opened from Scribe Conversions (not the Import tier)
@@ -437,6 +448,8 @@ yet.</li>
 are Phase 3 in the PRD and not started.</li>
 <li>Screen-reader passes with NVDA, JAWS and Narrator are still to do.
 The live runs above drove the core, not the windows.</li>
+<li>Scanning on a Mac goes through pagescan’s macOS backend, which
+nobody has run on a Mac with a scanner yet.</li>
 </ul>
 </main>
 </body>
