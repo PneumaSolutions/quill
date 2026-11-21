@@ -360,6 +360,99 @@ def test_an_import_result_is_a_new_tab_named_scribe(scribe, tmp_path, monkeypatc
     assert name == "Notes (Scribe)" and document.modified is True
 
 
+class _RichEdit:
+    def __init__(self, fail: bool = False) -> None:
+        self.fail = fail
+        self.rtf = b""
+
+    def set_rtf(self, data: bytes) -> None:
+        if self.fail:
+            raise OSError("no TOM")
+        self.rtf = data
+
+    def get_plain_text(self) -> str:
+        return "Notes\nConverted."
+
+
+def _rich_host(monkeypatch, *, capable: bool = True, fail: bool = False) -> _Host:
+    host = _Host()
+    wrapper = _RichEdit(fail=fail)
+    tab = SimpleNamespace(editor_mode="markup", docx_rich=False)
+    host._rich_capable = lambda: capable
+    host._active_richedit = lambda: wrapper
+    host._active_tab = lambda: tab
+    host._refresh_statusbar = lambda: None
+    host._close_tab = lambda index: host.tabs.pop(index)
+    host.wrapper, host.tab = wrapper, tab
+    monkeypatch.setattr("quill.core.docx_open.word_rich_available", lambda: True)
+    monkeypatch.setattr("quill.core.docx_open.read_docx_as_rtf", lambda path: "{\\rtf1 Notes}")
+    monkeypatch.setattr(
+        "quill.io.docconvert.convert_born_digital",
+        lambda path: SimpleNamespace(text="# Notes\n\nConverted.\n", warnings=()),
+    )
+    return host
+
+
+def test_an_import_word_result_opens_as_rich_text(scribe, tmp_path, monkeypatch) -> None:
+    """PRD 8.1.1: "Word by default, opened as rich text", in a new unsaved tab."""
+    docx = tmp_path / "Notes.docx"
+    docx.write_bytes(b"PK")
+    host = _rich_host(monkeypatch)
+    assert host.scribe_open_result(docx, purpose="import") is True
+    [(document, name)] = host.tabs
+    assert name == "Notes (Scribe)" and document.path is None and document.modified
+    assert host.tab.editor_mode == "rich" and host.tab.docx_rich is True
+    assert host.wrapper.rtf == b"{\\rtf1 Notes}"
+
+
+def test_an_import_word_result_falls_back_to_text_without_rich(
+    scribe, tmp_path, monkeypatch
+) -> None:
+    docx = tmp_path / "Notes.docx"
+    docx.write_bytes(b"PK")
+    for host in (_rich_host(monkeypatch, capable=False), _rich_host(monkeypatch, fail=True)):
+        assert host.scribe_open_result(docx, purpose="import") is True
+        [(document, name)] = host.tabs
+        assert document.text.startswith("# Notes") and name == "Notes (Scribe)"
+        assert host.tab.editor_mode == "markup"
+
+
+def test_mp3_and_daisy_go_to_media_player(scribe, tmp_path, monkeypatch) -> None:
+    """PRD 8.3 and 9: MP3 and DAISY open in Quill Media Player, DAISY at its .ncx."""
+    import zipfile
+
+    launched: list[tuple[str, tuple[str, ...]]] = []
+    monkeypatch.setattr("quill.core.app_launcher.is_app_released", lambda key: True)
+    monkeypatch.setattr(
+        "quill.core.app_launcher.launch_app",
+        lambda key, extra_args=(): launched.append((key, extra_args)) or True,
+    )
+    mp3 = tmp_path / "Notes.mp3"
+    mp3.write_bytes(b"ID3")
+    daisy = tmp_path / "Notes.zip"
+    with zipfile.ZipFile(daisy, "w") as bundle:
+        bundle.writestr("Notes/dtb.ncx", "<ncx/>")
+    host = _Host()
+    assert host.scribe_open_result(mp3) is True
+    assert host.scribe_open_result(daisy) is True
+    ncx = tmp_path / "Notes (DAISY)" / "Notes" / "dtb.ncx"
+    assert launched == [("player", (str(mp3),)), ("player", (str(ncx),))]
+
+
+def test_without_media_player_audio_opens_with_the_computers_player(
+    scribe, tmp_path, monkeypatch
+) -> None:
+    opened: list[Path] = []
+    monkeypatch.setattr("quill.core.app_launcher.is_app_released", lambda key: False)
+    monkeypatch.setattr(
+        "quill.ui.scribe_conversions_window.open_path", lambda path: opened.append(path) or True
+    )
+    mp3 = tmp_path / "Notes.mp3"
+    mp3.write_bytes(b"ID3")
+    assert _Host().scribe_open_result(mp3) is True
+    assert opened == [mp3]
+
+
 def test_jobs_finished_after_their_app_closed_are_said_together(scribe, tmp_path) -> None:
     host = _Host()
     folder = tmp_path / "Scribe for Documents"

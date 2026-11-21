@@ -13,9 +13,11 @@ speaks. Sentences arrive here on the UI thread:
 
 A result opens on its own only in the app that started the job, only if that
 app is in front, and only when Options > Open each result says Yes (PRD
-7.4a and 9): Word and HTML open in QUILL (an Import result as a new unsaved
-tab named "<stem> (Scribe)"), BRF in the braille view, MP3 and DAISY with
-the computer's player; PDF, EPUB, MOBI and the offline web page are saved.
+7.4a and 9): Word opens in QUILL as rich text and HTML in QUILL (an Import
+result as a new unsaved tab named "<stem> (Scribe)"), BRF in the braille
+view, MP3 and DAISY in Quill Media Player (DAISY at its navigation, PRD 8.3)
+where this build has it and with the computer's player otherwise; PDF, EPUB,
+MOBI and the offline web page are saved.
 Otherwise the result sentence ends "Open it from Scribe Conversions."
 """
 
@@ -200,13 +202,47 @@ class ScribeQueueMixin:
                 return False
         from quill.ui.scribe_conversions_window import open_path
 
+        if suffix in (".mp3", ".zip", ".ncx"):
+            target = self._scribe_player_target(path)
+            if target is not None and self._scribe_open_in_player(target):
+                return True
         return open_path(path)
+
+    @staticmethod
+    def _scribe_player_target(path: Path) -> Path | None:
+        """What Media Player opens: the MP3, or a DAISY book's .ncx (unpacked once)."""
+        if path.suffix.lower() == ".mp3":
+            return path
+        from quill.core.scribe.library import daisy_navigation
+
+        try:
+            return daisy_navigation(path)
+        except (OSError, ValueError):
+            return None
+
+    @staticmethod
+    def _scribe_open_in_player(target: Path) -> bool:
+        """MP3 and DAISY go to Quill Media Player where this build has it (PRD 8.3, 9);
+        False sends them to the computer's default player instead."""
+        from quill.core.app_launcher import is_app_released, launch_app
+
+        return is_app_released("player") and launch_app("player", extra_args=(str(target),))
 
     def _scribe_open_as_new_tab(self, path: Path) -> bool:
         """The Import tier's result: a new unsaved tab named "<stem> (Scribe)" (8.1.1)."""
         from quill.core.document import Document
         from quill.io.docconvert import convert_born_digital
 
+        stem = path.stem.removesuffix(" (web page)")
+        rtf = self._scribe_word_as_rtf(path) if path.suffix.lower() == ".docx" else None
+        if rtf is not None:
+            index = self._create_document_tab(  # type: ignore[attr-defined]
+                Document(text="", path=None, modified=True), select=True
+            )
+            if self._scribe_load_rich(rtf):
+                self._set_tab_page_text(index, f"{stem} (Scribe)")  # type: ignore[attr-defined]
+                return True
+            self._close_tab(index)  # type: ignore[attr-defined]
         try:
             outcome = convert_born_digital(path)
         except Exception as exc:  # noqa: BLE001
@@ -215,8 +251,34 @@ class ScribeQueueMixin:
         index = self._create_document_tab(  # type: ignore[attr-defined]
             Document(text=outcome.text, path=None, modified=True), select=True
         )
-        stem = path.stem.removesuffix(" (web page)")
         self._set_tab_page_text(index, f"{stem} (Scribe)")  # type: ignore[attr-defined]
+        return True
+
+    def _scribe_word_as_rtf(self, path: Path) -> str | None:
+        """A Word result as RTF for the rich editor, or None where rich is unavailable."""
+        from quill.core import docx_open
+
+        if not docx_open.word_rich_available() or not self._rich_capable():  # type: ignore[attr-defined]
+            return None
+        try:
+            return str(docx_open.read_docx_as_rtf(path))
+        except Exception:  # noqa: BLE001 - falls back to the converted text
+            return None
+
+    def _scribe_load_rich(self, rtf: str) -> bool:
+        """Load RTF into the new tab and make it a rich Word tab (PRD 8.1.1: "opened
+        as rich text"). It is unsaved, so Save asks where; the result stays on disk."""
+        wrapper = self._active_richedit()  # type: ignore[attr-defined]
+        try:
+            wrapper.set_rtf(rtf.encode("utf-8", errors="replace"))
+        except Exception:  # noqa: BLE001
+            return False
+        tab = self._active_tab()  # type: ignore[attr-defined]
+        tab.editor_mode = "rich"
+        tab.docx_rich = True
+        self.document.text = wrapper.get_plain_text()  # type: ignore[attr-defined]
+        self.document.modified = True  # type: ignore[attr-defined]
+        self._refresh_statusbar()  # type: ignore[attr-defined]
         return True
 
     # ------------------------------------------------------------ the rest
