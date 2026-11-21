@@ -256,3 +256,23 @@ def test_imported_table_navigates_after_the_rich_edit_rtf_round_trip(tmp_path: P
     assert table_nav.move(grid, text.index("Metric"), "next").announcement == (
         "Column 2: Size | Units"
     )
+
+
+def test_iso_alignment_values_do_not_stop_the_rich_read(tmp_path: Path) -> None:
+    """Scribe for Documents' Word results write ``w:jc w:val="start"``, which
+    python-docx cannot map; the rich read used to fail on every one of them."""
+    import docx
+    from docx.oxml.ns import qn
+
+    source = docx.Document()
+    for value in ("start", "end", "both"):
+        paragraph = source.add_paragraph(f"aligned {value}")
+        jc = paragraph._p.get_or_add_pPr().makeelement(qn("w:jc"), {qn("w:val"): value})
+        paragraph._p.get_or_add_pPr().append(jc)
+    path = tmp_path / "iso.docx"
+    source.save(str(path))
+
+    rich = read_docx_rich(path)
+
+    aligns = {p.spans[0].text: p.align for p in rich.paragraphs if p.spans}
+    assert aligns == {"aligned start": "left", "aligned end": "right", "aligned both": "justify"}
