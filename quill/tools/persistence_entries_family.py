@@ -9,6 +9,13 @@ whole family in the shared data folder, rather than a field per app.
 from __future__ import annotations
 
 FAMILY_ENTRIES: dict[str, str] = {
+    # Scribe for Documents' family files in the shared data folder (Scribe PRD
+    # 7.4, 7.6): the one queue of jobs (schema-stamped, additive; an unreadable
+    # file reads as an empty queue, and the documents stay in the Scribe account),
+    # the runner lock's heartbeat, and which document made which local file.
+    "core/scribe/queue.py::_write": "content",
+    "core/scribe/queue.py::acquire": "marker",
+    "core/scribe/library.py::record": "cache",
     # Where each app's own sounds play (app_sounds.json), and which way the
     # arrow keys move a slider in every app (slider_keys.json).
     "core/app_sounds_store.py::save": "marker",

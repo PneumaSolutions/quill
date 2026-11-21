@@ -1,0 +1,421 @@
+"""Scribe for Documents' shared foundation against the fake server (PRD 13).
+
+QUILL's own client, channel, queue and runner, unmodified, talking to the
+real HTTP and WebSocket servers in tests/scribe_fake_server.py.
+"""
+
+from __future__ import annotations
+
+import logging
+import threading
+
+import pytest
+
+from quill.core.scribe import auth, model
+from quill.core.scribe import queue as q
+from quill.core.scribe.channel import DocumentChannel
+from quill.core.scribe.client import ScribeClient, safe_filename, unique_target
+from quill.core.scribe.library import Library, download_folder
+from quill.core.scribe.runner import QueueRunner, cancel_waiting
+from tests.scribe_fake_server import memory_store, running_fake
+
+pytest.importorskip("websockets")
+
+
+@pytest.fixture
+def fake(monkeypatch, quill_data_dir):
+    monkeypatch.delenv("QUILL_SAFE_MODE", raising=False)
+    with running_fake() as server:
+        monkeypatch.setenv(auth.BASE_URL_ENV, server.base_url)
+        yield server
+
+
+@pytest.fixture
+def store():
+    return memory_store()
+
+
+def _runner(fake, store, tmp_path, said=None, results=None, **kw):
+    client = ScribeClient(store)
+    return QueueRunner(
+        app="QUILL",
+        jobs=q.JobQueue(tmp_path / "shared"),
+        lock=q.RunnerLock(tmp_path / "shared"),
+        client=client,
+        library=Library(tmp_path / "shared"),
+        channel_factory=lambda doc_id: DocumentChannel(
+            doc_id, store=store, connector=fake.connector
+        ),
+        on_say=lambda kind, text, job: (said if said is not None else []).append((kind, text)),
+        on_result=lambda job: (results if results is not None else []).append(job),
+        sleep=lambda _s: None,
+        **kw,
+    )
+
+
+def _job(tmp_path, *formats, name="Notes.pdf", **kw):
+    source = tmp_path / name
+    source.write_bytes(b"%PDF-1.4 fake")
+    return q.Job(
+        title=name,
+        source_path=str(source),
+        formats=list(formats),
+        folder=str(download_folder(name, str(tmp_path / "out"))),
+        **kw,
+    )
+
+
+# ------------------------------------------------------------------ model
+
+
+def test_formats_follow_scribes_build_order() -> None:
+    assert model.in_build_order(["daisy", "brf", "mp3", "html"]) == ["html", "brf", "mp3", "daisy"]
+    assert model.labels_sentence(["docx", "brf"]) == "Word and Braille (BRF)"
+    assert model.groups_for(["brf"]) == ["Language and voice", "Braille", "Pictures and maths"]
+    assert "Print" in model.groups_for(["docx"])
+
+
+def test_settings_round_trip_with_json_string_maps() -> None:
+    settings = model.DocumentSettings(voices={"en-US": "en-US-AvaNeural"}, tts_rate=1.5)
+    sent = settings.to_json()
+    assert sent["voices"] == '{"en-US": "en-US-AvaNeural"}'
+    assert model.DocumentSettings.from_json(sent) == settings
+
+
+def test_every_error_row_has_its_code() -> None:
+    rows = {
+        "unauthenticated": "QUILL-SCRIBE-SIGNIN",
+        "invalid_grant": "QUILL-SCRIBE-SIGNIN",
+        "needs_purchase": "QUILL-SCRIBE-PAGES",
+        "password_required": "QUILL-SCRIBE-PASSWORD",
+        "invalid_password": "QUILL-SCRIBE-PASSWORD",
+        "rate_limited": "QUILL-SCRIBE-BUSY",
+        "not_found": "QUILL-SCRIBE-GONE",
+        "forbidden": "QUILL-SCRIBE-GONE",
+        "server_error": "QUILL-SCRIBE-FAILED",
+    }
+    for server_code, quill_code in rows.items():
+        error = model.error_for(server_code, "The server's own sentence.")
+        assert error.code == quill_code
+        assert model.plain(error) == "The server's own sentence."  # never the code
+    assert model.ScribeOffline("x").code == "QUILL-SCRIBE-OFFLINE"
+    assert model.ScribeSignInLocal("x").code == "QUILL-SCRIBE-SIGNIN-LOCAL"
+    assert model.ScribeSaveFailed("x").code == "QUILL-SCRIBE-SAVE"
+    assert model.ScribeOff("x").code == "QUILL-SCRIBE-OFF"
+
+
+def test_file_names_are_safe_and_never_overwrite(tmp_path) -> None:
+    assert safe_filename("a<b>:c?.docx") == "a_b_c_.docx"
+    (tmp_path / "Notes.docx").write_text("x")
+    assert unique_target(tmp_path, "Notes.docx").name == "Notes (2).docx"
+
+
+def test_downloads_go_to_documents_scribe_for_documents_title(tmp_path) -> None:
+    (tmp_path / "Documents").mkdir()
+    assert download_folder("Notes.pdf", home=tmp_path) == (
+        tmp_path / "Documents" / "Scribe for Documents" / "Notes"
+    )
+    assert download_folder("Notes", str(tmp_path / "x")) == tmp_path / "x" / "Notes"
+
+
+# ------------------------------------------------------------------ auth
+
+
+def test_safe_mode_turns_everything_off(monkeypatch, store) -> None:
+    monkeypatch.setenv("QUILL_SAFE_MODE", "1")
+    with pytest.raises(model.ScribeOff):
+        ScribeClient(store).account()
+    with pytest.raises(model.ScribeOff):
+        auth.SignInFlow(store).start()
+
+
+def test_the_sign_in_url_goes_through_logout_with_pkce(fake) -> None:
+    url = auth.authorization_url("http://127.0.0.1:5555/callback", "CHALLENGE")
+    assert url.startswith(f"{fake.base_url}/auth/logout?next=%2Foauth%2Fauthorize")
+    assert "code_challenge%3DCHALLENGE" in url and "S256" in url
+    assert "redirect_uri%3Dhttp%253A%252F%252F127.0.0.1%253A5555%252Fcallback" in url
+
+
+def test_sign_in_through_the_loopback_listener_stores_tokens(fake) -> None:
+    import urllib.request
+
+    store = memory_store(signed_in=False)
+    flow = auth.SignInFlow(store)
+    url = flow.start()
+    from urllib.parse import parse_qs, urlsplit
+
+    next_path = parse_qs(urlsplit(url).query)["next"][0]
+    redirect = parse_qs(urlsplit(next_path).query)["redirect_uri"][0]
+    assert redirect.startswith("http://127.0.0.1:") and redirect.endswith("/callback")
+    page: list[bytes] = []
+    threading.Timer(
+        0.2, lambda: page.append(urllib.request.urlopen(redirect + "?code=good-code").read())
+    ).start()
+    tokens = flow.finish(timeout=10)
+    assert tokens.access_token.startswith("access-") and store.signed_in()
+    assert b"You can close this tab and return to QUILL." in page[0]
+
+
+def test_a_refused_code_is_a_sign_in_error(fake) -> None:
+    with pytest.raises(model.ScribeSignInRequired):
+        auth.token_request({"grant_type": "authorization_code", "code": "bad"})
+
+
+def test_an_expired_token_is_refreshed_once_on_401(fake, store) -> None:
+    fake.expire_next = True
+    account = ScribeClient(store).account()
+    assert account.name == "Mike Calvo" and account.pages_remaining == 100
+    assert store.load().access_token != "access-1"
+
+
+def test_a_refresh_that_fails_means_sign_in_again(fake) -> None:
+    store = memory_store()
+    store.save(auth.StoredTokens("dead", "dead-refresh", 4_000_000_000))
+    with pytest.raises(model.ScribeSignInRequired):
+        ScribeClient(store).account()
+
+
+def test_sign_out_revokes_and_wipes(fake, store) -> None:
+    assert auth.sign_out(store) is True
+    assert fake.revoked == ["refresh-1"] and not store.signed_in()
+    assert auth.sign_out(store) is False
+
+
+def test_the_account_page_opens_signed_in(fake, store) -> None:
+    url = ScribeClient(store).account_page_url()
+    assert "/auth/browser_from_oauth?token=access-1" in url
+
+
+# ------------------------------------------------------------------ documents
+
+
+def test_my_documents_rename_trash_recover_delete(fake, store) -> None:
+    doc = fake.add_document("Notes", outputs={"docx": "complete"})
+    client = ScribeClient(store)
+    listed = client.documents()
+    assert [d.title for d in listed.documents] == ["Notes"]
+    assert listed.documents[0].ready_formats() == ["docx"] and listed.pages_remaining == 100
+    assert client.rename(doc.id, "Meeting notes").title == "Meeting notes"
+    with pytest.raises(model.ScribeError):
+        client.delete_forever(doc.id)  # only from the trash
+    client.trash(doc.id)
+    assert client.documents().documents == []
+    assert client.trash_list()[0].permanently_delete_at == "2026-11-28"
+    client.recover(doc.id)
+    client.trash(doc.id)
+    client.delete_forever(doc.id)
+    with pytest.raises(model.ScribeGone):
+        client.outputs(doc.id)
+
+
+def test_settings_lists_come_from_the_server(fake, store) -> None:
+    client = ScribeClient(store)
+    assert ("English", "en") in client.languages()
+    assert client.voices()["en-US"][0] == ("Ava", "en-US-AvaNeural", True)
+    assert client.braille_tables()[0][1] == "en-ueb-g2.ctb"
+
+
+# ------------------------------------------------------------------ the queue
+
+
+def test_a_job_uploads_converts_each_format_in_order_and_downloads(fake, store, tmp_path) -> None:
+    said, results = [], []
+    runner = _runner(fake, store, tmp_path, said, results)
+    runner.jobs.add([_job(tmp_path, "brf", "docx")])
+    assert runner.run_once() is True
+    job = results[0]
+    assert job.state == q.DONE and job.percent == 100
+    assert fake.started == ["docx", "brf"]  # Scribe's order, not the person's
+    names = [p.rsplit("/", 1)[-1].rsplit("\\", 1)[-1] for p in job.results]
+    assert names == ["docx", "brf"] or all(n.startswith("Notes") for n in names)
+    assert ("start", "Scribe for Documents is converting Notes.pdf.") in said
+    assert ("stage", "Notes.pdf, adding image descriptions.") in said
+    assert [t for k, t in said if k == "percent"] == [
+        "Notes.pdf, 25 percent.",
+        "Notes.pdf, 50 percent.",
+        "Notes.pdf, 75 percent.",
+    ]
+    assert Library(tmp_path / "shared").files_for(job.document_id)
+    assert len(fake.uploads) == 1
+
+
+def test_accessible_html_arrives_as_the_web_page_unpacked(fake, store, tmp_path) -> None:
+    results = []
+    runner = _runner(fake, store, tmp_path, results=results)
+    runner.jobs.add([_job(tmp_path, "html")])
+    runner.run_once()
+    page = results[0].results[0]
+    assert page.endswith("index.html")
+    assert "Converted." in open(page, encoding="utf-8").read()
+    assert fake.started == ["offline_html"]
+
+
+def test_a_dropped_channel_reconnects_without_uploading_again(fake, store, tmp_path) -> None:
+    said, results = [], []
+    fake.drop_after_frames = 2
+    runner = _runner(fake, store, tmp_path, said, results)
+    runner.jobs.add([_job(tmp_path, "docx")])
+    runner.run_once()
+    assert results and results[0].state == q.DONE
+    assert len(fake.uploads) == 1
+
+
+def test_password_required_waits_for_the_person_without_a_dialog(fake, store, tmp_path) -> None:
+    said = []
+    fake.password_for_next_upload = "hunter2"
+    runner = _runner(fake, store, tmp_path, said)
+    [job] = runner.jobs.add([_job(tmp_path, "docx")])
+    runner.run_once()
+    assert runner.jobs.get(job.id).state == q.NEEDS_PASSWORD
+    assert ("needs", "Notes.pdf needs its password. Open Scribe Conversions to enter it.") in said
+    runner.give_password(job.id, "hunter2")
+    runner.run_once()
+    assert runner.jobs.get(job.id).state == q.DONE
+    assert len(fake.uploads) == 1
+
+
+def test_needs_purchase_keeps_the_purchase_link(fake, store, tmp_path) -> None:
+    said = []
+    fake.start_errors = [
+        {
+            "reason": "needs_purchase",
+            "message": "You are out of pages.",
+            "purchase_url": "https://scribeit.io/documents/x/docx/pricing_options",
+        }
+    ]
+    runner = _runner(fake, store, tmp_path, said)
+    [job] = runner.jobs.add([_job(tmp_path, "docx")])
+    runner.run_once()
+    job = runner.jobs.get(job.id)
+    assert job.state == q.NEEDS_PAGES and job.error_code == "QUILL-SCRIBE-PAGES"
+    assert job.purchase_url.endswith("/pricing_options")
+    assert (
+        said[-1][1] == "You are out of pages. You can still read the first two pages: Open Preview."
+    )
+
+
+def test_a_conversion_error_says_the_servers_message(fake, store, tmp_path) -> None:
+    said = []
+    fake.scripts["docx"] = [
+        ("status", "convert", 0.2),
+        ("error", "unsupported_format", "That file is not a document."),
+    ]
+    runner = _runner(fake, store, tmp_path, said)
+    [job] = runner.jobs.add([_job(tmp_path, "docx")])
+    runner.run_once()
+    assert runner.jobs.get(job.id).state == q.FAILED
+    assert said[-1] == (
+        "error",
+        "Scribe for Documents could not convert Notes.pdf: That file is not a document.",
+    )
+
+
+def test_rate_limited_slows_down_and_carries_on(fake, store, tmp_path) -> None:
+    said, results = [], []
+    fake.start_errors = [{"reason": "rate_limited", "message": "Slow down."}]
+    runner = _runner(fake, store, tmp_path, said, results)
+    runner.jobs.add([_job(tmp_path, "docx")])
+    runner.run_once()
+    assert ("error", "Scribe for Documents asked QUILL to slow down.") in said
+    assert results[0].state == q.DONE
+
+
+def test_a_signed_out_job_pauses(fake, tmp_path) -> None:
+    store = memory_store(signed_in=False)
+    runner = _runner(fake, store, tmp_path)
+    [job] = runner.jobs.add([_job(tmp_path, "docx")])
+    runner.run_once()
+    assert runner.jobs.get(job.id).state == q.NEEDS_SIGNIN
+
+
+def test_batch_without_the_exception_waits_for_send_next_file(tmp_path) -> None:
+    jobs = q.JobQueue(tmp_path)
+    first, second = jobs.add([
+        _job(tmp_path, "docx", name="a.pdf"),
+        _job(tmp_path, "docx", name="b.pdf"),
+    ])
+    assert jobs.get(first.id).state == q.WAITING
+    assert jobs.get(second.id).state == q.WAITING_YOU
+    other = q.JobQueue(tmp_path)
+    assert [j.id for j in other.jobs()] == [first.id, second.id]  # the family sees one queue
+
+
+def test_cancel_waiting_says_what_it_means(tmp_path) -> None:
+    jobs = q.JobQueue(tmp_path)
+    [job] = jobs.add([_job(tmp_path, "docx")])
+    assert cancel_waiting(jobs, job.id) == (
+        "QUILL stopped waiting for Notes.pdf. Scribe will still finish it and may use pages; "
+        "it stays in My Scribe Documents."
+    )
+    assert jobs.get(job.id).state == q.CANCELLED
+
+
+def test_one_runner_at_a_time_and_a_stale_lock_passes_on(tmp_path, monkeypatch) -> None:
+    first = q.RunnerLock(tmp_path, app="QUILL")
+    second = q.RunnerLock(tmp_path, app="QUILL Lite")
+    second.pid = first.pid + 1
+    assert first.acquire() and not second.acquire()
+    import time as _time
+
+    later = _time.time() + q.RUNNER_STALE_S + 1
+    monkeypatch.setattr(q.time, "time", lambda: later)
+    assert second.acquire()  # the first app closed or crashed
+
+
+def test_a_job_survives_a_restart_and_is_never_uploaded_twice(fake, store, tmp_path) -> None:
+    results = []
+    jobs = q.JobQueue(tmp_path / "shared")
+    [job] = jobs.add([_job(tmp_path, "docx")])
+    # The app that started it uploaded, then closed mid-conversion.
+    doc = fake.add_document("Notes")
+    jobs.update(
+        job.id,
+        lambda j: (
+            setattr(j, "document_id", doc.id),
+            setattr(j, "state", q.CONVERTING),
+            setattr(j, "owner_pid", 1),
+        ),
+    )
+    runner = _runner(fake, store, tmp_path, results=results)
+    runner.run_once()
+    assert results[0].state == q.DONE and results[0].resumed is True
+    assert fake.uploads == []
+
+
+def test_result_sentences(tmp_path) -> None:
+    folder = tmp_path / "Scribe for Documents" / "Notes"
+    job = q.Job(title="Notes.pdf", results=[str(folder / "Notes.docx"), str(folder / "Notes.brf")])
+    sentence = q.result_sentence(job, opened="Word")
+    assert sentence.startswith("Scribe for Documents made Notes.docx and Notes.brf in ")
+    assert sentence.endswith("Notes. Word is open in QUILL.")
+    assert q.result_sentence(job, offer=True).endswith("Open it from Scribe Conversions.")
+    assert q.finished_while_closed_sentence([
+        job,
+        q.Job(title="Chapter 2.docx", results=[str(folder / "c.docx")]),
+    ]).startswith(
+        "Scribe for Documents finished 2 documents while QUILL was closed: Notes and Chapter 2"
+    )
+
+
+def test_a_password_never_reaches_the_log_or_the_queue_file(fake, store, tmp_path, caplog) -> None:
+    caplog.set_level(logging.DEBUG)
+    fake.password_for_next_upload = "s3cret-pass"
+    runner = _runner(fake, store, tmp_path)
+    [job] = runner.jobs.add([_job(tmp_path, "docx")])
+    runner.run_once()
+    runner.give_password(job.id, "s3cret-pass")
+    runner.run_once()
+    assert "s3cret-pass" not in caplog.text
+    assert "s3cret-pass" not in runner.jobs.path.read_text(encoding="utf-8")
+
+
+def test_the_real_websocket_connect_is_quiet(monkeypatch) -> None:
+    """websockets logs the token and every frame at DEBUG; QUILL's logger for it never does."""
+    import websockets.sync.client as ws_client
+
+    from quill.core.scribe import channel
+
+    seen = {}
+    monkeypatch.setattr(ws_client, "connect", lambda url, **kw: seen.update(kw) or "ws")
+    assert channel.connect("wss://scribeit.io/socket/websocket?token=t") == "ws"
+    assert seen["logger"].getEffectiveLevel() >= logging.WARNING

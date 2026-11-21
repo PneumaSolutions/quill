@@ -123,6 +123,10 @@ ui = [
     # graceful missing-nacl path in quill.tools.signing stays as defense in
     # depth; it just almost never triggers now.
     "PyNaCl>=1.6.2",
+    # websockets: Scribe for Documents' document channel (quill/core/scribe/
+    # channel.py, Scribe PRD 7.1). Already in the shared runtime for live
+    # dictation; declared here so Scribe cannot quietly lose it.
+    "websockets>=15.0.1",
 ]
 spellcheck = ["pyenchant>=3.3.0"]
 # macOS native rich text (One Editor, Every Format, Phase 6): PyObjC lets
