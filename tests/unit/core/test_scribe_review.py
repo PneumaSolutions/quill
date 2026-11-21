@@ -631,3 +631,38 @@ def test_q11_an_unreadable_library_is_never_written_over(tmp_path) -> None:
     with pytest.raises(OSError):
         library.record("doc", "Notes", ["x.docx"])
     assert library.path.read_text(encoding="utf-8") == "{damaged"
+
+
+# ------------------------------------------------------------------ Q8: the sign-in listener
+
+
+def test_q8_an_idle_local_connection_never_freezes_the_sign_in_wait() -> None:
+    import socket
+    import urllib.request
+
+    from quill.core.scribe.model import ScribeCancelled
+
+    catcher = auth.LoopbackCatcher(state="s1")
+    catcher.start()
+    port = int(catcher.redirect_uri.split(":")[2].split("/")[0])
+    idle = socket.create_connection(("127.0.0.1", port))  # connects, sends nothing
+    try:
+        started = time.monotonic()
+        with pytest.raises(ScribeCancelled):
+            catcher.wait(cancel_requested=lambda: time.monotonic() - started > 0.5, timeout=60)
+        assert time.monotonic() - started < 2.0  # Cancel still answers
+        # ...and the real redirect is not queued behind the idle connection.
+        got: dict[str, str] = {}
+
+        def wait() -> None:
+            got["code"] = catcher.wait(cancel_requested=None, timeout=10)
+
+        waiter = threading.Thread(target=wait)
+        waiter.start()
+        time.sleep(0.3)
+        urllib.request.urlopen(f"{catcher.redirect_uri}?code=abc&state=s1", timeout=5).read()
+        waiter.join(5)
+        assert got == {"code": "abc"}
+    finally:
+        idle.close()
+        catcher.close()

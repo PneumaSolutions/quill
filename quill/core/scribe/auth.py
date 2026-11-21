@@ -37,7 +37,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -66,6 +66,8 @@ REFRESH_MARGIN_S = 300
 SECRETS_NAMESPACE = "scribe"
 _TOKENS_REF = SecretRef(SECRETS_NAMESPACE, "tokens")
 _POLL_S = 0.25
+#: A connection to the sign-in listener that sends no request in this long is dropped.
+_REQUEST_TIMEOUT_S = 5.0
 
 
 def client_id() -> str:
@@ -232,10 +234,19 @@ _PAGE = """<!DOCTYPE html>
 """
 
 
-class _LoopbackServer(HTTPServer):
-    """Exclusive on Windows (``SO_REUSEADDR`` there lets two listeners race)."""
+class _LoopbackServer(ThreadingHTTPServer):
+    """Exclusive on Windows (``SO_REUSEADDR`` there lets two listeners race).
+
+    Each connection is served on its own thread, and a connection that sends
+    nothing is dropped after :data:`_REQUEST_TIMEOUT_S`: one idle local
+    connection (a speculative browser pre-connect, or any program) used to
+    hold the single-threaded listener, so Cancel and the five-minute limit
+    stopped working and the real redirect queued behind it (independent
+    review Q8).
+    """
 
     allow_reuse_address = sys.platform != "win32"
+    daemon_threads = True
 
     def server_bind(self) -> None:
         exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
@@ -267,6 +278,7 @@ class LoopbackCatcher:
         class _Handler(BaseHTTPRequestHandler):
             server_version = "QUILL"
             sys_version = ""
+            timeout = _REQUEST_TIMEOUT_S  # StreamRequestHandler sets it on the socket
 
             def do_GET(self) -> None:  # noqa: N802 - http.server's name
                 catcher._handle(self)
