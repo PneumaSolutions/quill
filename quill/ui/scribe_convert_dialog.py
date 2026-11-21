@@ -249,7 +249,11 @@ class ScribeConvertDialog:
         if window is None:
             return
         try:
-            x, y = self.panel.CalcUnscrolledPosition(window.GetPosition())
+            # Measured from the scrolled panel itself, not the control's parent
+            # (a static box for most controls), so it scrolls to the right place
+            # for a low-vision user (Q41).
+            offset = window.GetScreenPosition() - self.panel.GetScreenPosition()
+            _x, y = self.panel.CalcUnscrolledPosition(offset.x, offset.y)
             self.panel.Scroll(-1, max(0, y // 20 - 2))
         except Exception:  # noqa: BLE001 - scrolling is a convenience
             pass
@@ -288,52 +292,77 @@ class ScribeConvertDialog:
         self.dialog.Destroy()
 
 
-def ask_password(host: Any, parent: Any, source: SourceInfo) -> str | None:
-    """Up to three tries; QUILL checks the password itself when it can."""
+def ask_password(host: Any, parent: Any, source: SourceInfo, *, name: str = "") -> str | None:
+    """Up to three tries in one dialog; QUILL checks the password itself when it can.
+
+    PRD 7.3: after a wrong password the text stays selected in the same field
+    and QUILL says "Password not accepted. 2 tries left." -- one dialog for every
+    try, so that sentence is not cut off by a new dialog's own focus speech
+    (independent review Q24). A source with no local file (a link, or a
+    document already in the account) is not checked here: Scribe checks it.
+    """
     import wx
 
-    tries_left = MAX_PASSWORD_TRIES
-    message = f"Password for {source.name}:"
-    while tries_left > 0:
-        dialog = PasswordDialog(parent, source.name, message)
-        try:
-            if host._show_modal_dialog(dialog.dialog, "Document Password") != wx.ID_OK:
-                return None
-            password = dialog.value()
-        finally:
-            dialog.close()
-        assert source.path is not None
-        verdict = pdf_password_ok(source.path, password)
-        if verdict is not False:
-            return password  # right, or QUILL cannot tell and Scribe will check
-        tries_left -= 1
-        if tries_left:
-            host._announce(
-                f"Password not accepted. {tries_left} {'tries' if tries_left > 1 else 'try'} left."
-            )
-            message = f"Password not accepted. {tries_left} left. Password for {source.name}:"
-    host._announce(f"{source.name} was not sent: password not accepted")
-    return None
+    shown_name = name or source.name or "the document"
+
+    def _check(password: str) -> bool | None:
+        if source.path is None:
+            return None
+        return pdf_password_ok(source.path, password)
+
+    dialog = PasswordDialog(
+        parent, shown_name, check=_check, tries=MAX_PASSWORD_TRIES, say=host._announce
+    )
+    try:
+        answer = host._show_modal_dialog(dialog.dialog, "Document Password")
+        password = dialog.value()
+        refused = dialog.refused
+    finally:
+        dialog.close()
+    if refused:
+        host._announce(f"{shown_name} was not sent: password not accepted")
+        return None
+    if answer != wx.ID_OK:
+        return None
+    return password
 
 
 class PasswordDialog:
-    """ "Password for Notes.pdf", never pre-filled, with Show password."""
+    """ "Password for Notes.pdf", never pre-filled, with Show password.
 
-    def __init__(self, parent: Any, name: str, message: str) -> None:
+    ``check`` answers True (right), False (wrong) or None (cannot tell: Scribe
+    will check). A wrong answer keeps the dialog open with the text selected
+    and the tries left said; the last wrong one closes it with ``refused``.
+    """
+
+    def __init__(
+        self,
+        parent: Any,
+        name: str,
+        message: str = "",
+        *,
+        check: Any = None,
+        tries: int = MAX_PASSWORD_TRIES,
+        say: Any = None,
+    ) -> None:
         import wx
 
+        self.wx = wx
+        self._check = check
+        self.tries_left = tries
+        self._say = say or (lambda _text: None)
+        self.refused = False
         self.dialog = wx.Dialog(parent, title="Document Password")
         root = wx.BoxSizer(wx.VERTICAL)
-        root.Add(
-            wx.StaticText(self.dialog, label=message.replace("Password for", "&Password for")),
-            0,
-            wx.ALL,
-            8,
-        )
+        # "&" in a file name is doubled, or wx takes it for an access key (Q39).
+        safe = name.replace("&", "&&")
+        self.status = wx.StaticText(self.dialog, label=message or "")
+        root.Add(self.status, 0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+        root.Add(wx.StaticText(self.dialog, label=f"&Password for {safe}:"), 0, wx.ALL, 8)
         self.hidden = wx.TextCtrl(self.dialog, style=wx.TE_PASSWORD)
         self.hidden.SetName(f"Password for {name}")
         self.hidden.SetHelpText("Used for this one upload; QUILL never saves or logs it.")
-        self.shown_label = wx.StaticText(self.dialog, label=f"Password for {name} (shown):")
+        self.shown_label = wx.StaticText(self.dialog, label=f"Password for {safe} (shown):")
         self.shown_label.Hide()
         self.shown = wx.TextCtrl(self.dialog)
         self.shown.SetName(f"Password for {name}")
@@ -357,25 +386,49 @@ class PasswordDialog:
         self.dialog.SetSizerAndFit(root)
         apply_modal_ids(self.dialog, affirmative_id=wx.ID_OK, escape_id=wx.ID_CANCEL)
         self.show.Bind(wx.EVT_CHECKBOX, lambda _e: self._toggle())
+        ok.Bind(wx.EVT_BUTTON, lambda _e: self.submit())
         self.hidden.SetFocus()
 
+    def _field(self) -> Any:
+        return self.shown if self.show.GetValue() else self.hidden
+
     def _toggle(self) -> None:
+        """Show or hide the text. Focus stays on the check box (Q40): moving it
+        into the field would speak the password the moment it was asked for."""
         if self.show.GetValue():
             self.shown.SetValue(self.hidden.GetValue())
             self.hidden.Hide()
             self.shown_label.Show()
             self.shown.Show()
-            self.shown.SetFocus()
         else:
             self.hidden.SetValue(self.shown.GetValue())
             self.shown.Hide()
             self.shown_label.Hide()
             self.hidden.Show()
-            self.hidden.SetFocus()
         self.dialog.Layout()
 
+    def submit(self) -> None:
+        """OK: a wrong password stays in the field, selected, with the tries left."""
+        verdict = self._check(self.value()) if self._check is not None else None
+        if verdict is not False:
+            self.dialog.EndModal(self.wx.ID_OK)
+            return
+        self.tries_left -= 1
+        if self.tries_left <= 0:
+            self.refused = True
+            self.dialog.EndModal(self.wx.ID_CANCEL)
+            return
+        left = f"{self.tries_left} {'tries' if self.tries_left > 1 else 'try'} left"
+        self.status.SetLabel(f"Password not accepted. {left}.")
+        field = self._field()
+        field.SetSelection(-1, -1)
+        if not field.HasFocus():
+            field.SetFocus()
+        self.dialog.Layout()
+        self._say(f"Password not accepted. {left}.")
+
     def value(self) -> str:
-        return str((self.shown if self.show.GetValue() else self.hidden).GetValue())
+        return str(self._field().GetValue())
 
     def close(self) -> None:
         self.dialog.Destroy()

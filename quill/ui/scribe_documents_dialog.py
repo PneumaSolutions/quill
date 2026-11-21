@@ -139,6 +139,12 @@ class ScribeDocumentsDialog:
 
     def refresh(self, focus_index: int | None = None) -> None:
         trash = self.in_trash
+        # Each load is numbered; only the newest one is shown, and it is shown
+        # as the view it was asked for. Results arrive in any order from the
+        # task pool, so a slow Documents list could land after Trash was
+        # chosen and show live documents with Delete Forever (Q22).
+        self._load_seq = getattr(self, "_load_seq", 0) + 1
+        seq = self._load_seq
         self.pages.ChangeValue("Loading...")
 
         def _run(progress_callback: Any, cancellation_token: Any, **_kw: Any) -> Any:
@@ -153,11 +159,26 @@ class ScribeDocumentsDialog:
         self.host._task_manager.submit(
             name="scribe-documents",
             func=_run,
-            on_success=lambda _op, result: self._loaded(*result, focus_index=focus_index),
-            on_failure=lambda _op, error: self._failed(error),
+            on_success=lambda _op, result: self._loaded(
+                *result, focus_index=focus_index, seq=seq, trash=trash
+            ),
+            on_failure=lambda _op, error: self._failed(error, seq=seq),
         )
 
-    def _loaded(self, documents: list[Any], pages: int | None, *, focus_index: int | None) -> None:
+    def _loaded(
+        self,
+        documents: list[Any],
+        pages: int | None,
+        *,
+        focus_index: int | None,
+        seq: int = 0,
+        trash: bool | None = None,
+    ) -> None:
+        if seq and seq != getattr(self, "_load_seq", seq):
+            return  # an older load: a newer one is on its way
+        in_trash = self.in_trash if trash is None else trash
+        if in_trash != self.in_trash:
+            return  # asked for the other view
         wx = self.wx
         self.documents = documents
         if pages is not None:
@@ -169,19 +190,19 @@ class ScribeDocumentsDialog:
         for doc in documents:
             index = self.list.InsertItem(self.list.GetItemCount(), doc.title)
             self.list.SetItem(index, 1, str(doc.page_count))
-            when = doc.permanently_delete_at if self.in_trash else doc.inserted_at
-            self.list.SetItem(index, 2, (("Deleted on " if self.in_trash else "") + when[:10]))
+            when = doc.permanently_delete_at if in_trash else doc.inserted_at
+            self.list.SetItem(index, 2, (("Deleted on " if in_trash else "") + spoken_date(when)))
             self.list.SetItem(index, 3, labels_sentence(doc.ready_formats()) or "none yet")
         has = bool(documents)
         self.list.Show(has)
-        self.empty.ChangeValue(EMPTY_TRASH if self.in_trash else EMPTY)
+        self.empty.ChangeValue(EMPTY_TRASH if in_trash else EMPTY)
         self.empty.Show(not has)
         self.empty_label.Show(not has)
         for key in ("download", "open", "rename", "trash", "review"):
-            self.buttons[key].Show(not self.in_trash)
+            self.buttons[key].Show(not in_trash)
             self.buttons[key].Enable(has)
         for key in ("recover", "delete"):
-            self.buttons[key].Show(self.in_trash)
+            self.buttons[key].Show(in_trash)
             self.buttons[key].Enable(has)
         self.buttons["copy"].Enable(has)
         self.dialog.Layout()
@@ -194,7 +215,9 @@ class ScribeDocumentsDialog:
         elif focus_index is not None:
             self.empty.SetFocus()
 
-    def _failed(self, error: BaseException) -> None:
+    def _failed(self, error: BaseException, *, seq: int = 0) -> None:
+        if seq and seq != getattr(self, "_load_seq", seq):
+            return
         self.pages.ChangeValue(plain(error))
         self.host._announce(plain(error))
 
@@ -247,7 +270,7 @@ class ScribeDocumentsDialog:
         if doc is None:
             return
         when = (
-            f" Scribe would delete it on {doc.permanently_delete_at[:10]} anyway."
+            f" Scribe would delete it on {spoken_date(doc.permanently_delete_at)} anyway."
             if doc.permanently_delete_at
             else ""
         )
@@ -325,6 +348,17 @@ def show(host: Any) -> None:
         host._show_modal_dialog(dialog.dialog, TITLE)
     finally:
         dialog.close()
+
+
+def spoken_date(stamp: str) -> str:
+    """ "2026-11-21T09:00:00Z" -> "November 21, 2026": a date, not ISO text (Q44)."""
+    import datetime as _dt
+
+    try:
+        day = _dt.date.fromisoformat(stamp[:10])
+    except ValueError:
+        return stamp[:10]
+    return f"{day:%B} {day.day}, {day.year}"
 
 
 __all__ = ["EMPTY", "TITLE", "ScribeDocumentsDialog", "show"]

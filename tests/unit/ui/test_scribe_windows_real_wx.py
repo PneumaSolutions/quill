@@ -97,3 +97,64 @@ def test_scribe_conversions_tab_order_and_a_steady_details_field(
     finally:
         window.frame.Destroy()
         parent.Destroy()
+
+
+def test_send_before_the_lists_load_keeps_the_saved_language(wx_session_app, tmp_path) -> None:
+    """Q17: pressing Send before the lists arrived sent "detect" and saved it."""
+    from quill.core.scribe.consent import SourceInfo
+    from quill.core.scribe.model import DocumentSettings
+    from quill.ui.scribe_convert_dialog import ScribeConvertDialog
+
+    parent = wx.Frame(None)
+    saved = DocumentSettings(language="es", braille_translation_table="es-g1.ctb")
+    dialog = ScribeConvertDialog(
+        _host(parent), [SourceInfo(path=tmp_path / "Notes.pdf")], formats=["brf"], settings=saved
+    )
+    try:
+        read = dialog.groups.read()  # nothing loaded: the task manager runs nothing
+        assert read.language == "es"
+        assert read.braille_translation_table == "es-g1.ctb"
+    finally:
+        dialog.close()
+        parent.Destroy()
+
+
+def test_a_wrong_password_stays_in_the_same_dialog_selected(wx_session_app, tmp_path) -> None:
+    """Q24 and PRD 7.3: one dialog for every try, the text selected, tries said;
+    the third wrong one ends it. Q39: "&" in a name stays; Q40: Show password
+    leaves focus on the check box."""
+    from quill.ui.scribe_convert_dialog import PasswordDialog
+
+    parent = wx.Frame(None)
+    said = []
+    ended = []
+    dialog = PasswordDialog(
+        parent, "Q&A.pdf", check=lambda pw: pw == "right", tries=3, say=said.append
+    )
+    dialog.dialog.EndModal = ended.append  # not shown modally in a test
+    try:
+        labels = [c.GetLabel() for c in dialog.dialog.GetChildren() if isinstance(c, wx.StaticText)]
+        assert "&Password for Q&&A.pdf:" in labels
+        dialog.hidden.SetValue("wrong")
+        dialog.submit()
+        assert ended == [] and said == ["Password not accepted. 2 tries left."]
+        assert dialog.hidden.GetSelection() == (0, len("wrong"))
+        assert dialog.status.GetLabel() == "Password not accepted. 2 tries left."
+        dialog.show.SetValue(True)
+        dialog._toggle()
+        assert dialog.shown.GetValue() == "wrong" and dialog.value() == "wrong"
+        dialog.shown.SetValue("right")
+        dialog.submit()
+        assert ended == [wx.ID_OK] and not dialog.refused
+    finally:
+        dialog.close()
+    dialog = PasswordDialog(parent, "Notes.pdf", check=lambda pw: False, tries=3)
+    ended = []
+    dialog.dialog.EndModal = ended.append
+    try:
+        for _ in range(3):
+            dialog.submit()
+        assert ended == [wx.ID_CANCEL] and dialog.refused
+    finally:
+        dialog.close()
+        parent.Destroy()

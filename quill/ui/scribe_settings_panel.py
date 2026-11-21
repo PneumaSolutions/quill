@@ -321,7 +321,11 @@ class ScribeSettingsGroups:
 
     def read(self) -> DocumentSettings:
         settings = DocumentSettings.from_json(self.settings.stored())
-        settings.language = self._language_code()
+        # A list that has not loaded (or failed) keeps the incoming choice:
+        # pressing Send before the lists arrive must not turn the language
+        # into "detect" and save that (independent review Q17).
+        if self._languages:
+            settings.language = self._language_code()
         if settings.language and self._locale():
             settings.dialects[settings.language] = self._locale()
         if self._locale() and self.voice_short_name():

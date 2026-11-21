@@ -129,7 +129,10 @@ class PdfOpenOcrMixin:
         ]
         dialog = wx.SingleChoiceDialog(
             self.frame,
-            scanned_question(path.name, found.page_count, some_text=found.has_text).split("\n")[0],
+            # The whole question, worded for a list rather than Yes and No (Q42).
+            scanned_question(path.name, found.page_count, some_text=found.has_text).split("\n")[0]
+            + " Choose how to read it. OCR on this computer uploads nothing and does not "
+            "change the PDF; Scribe for Documents uploads it to your Scribe account.",
             SCANNED_DIALOG_TITLE,
             choices,
         )
