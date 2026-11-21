@@ -27,6 +27,11 @@ before, there was no limit.
 Nothing that needs a server change was found. Two risks are accepted and
 explained at the end.
 
+An independent review later the same day found more, in reliability as well as
+security; each finding and what was done about it is in "Independent review"
+at the end. Where that changed something described below, the text below says
+so.
+
 ## Tokens
 
 - **Where they live.** `auth.TokenStore` keeps the access token, the refresh
@@ -65,8 +70,10 @@ explained at the end.
   on error, so nothing changes for the person signing in. Test:
   `test_a_redirect_without_the_right_state_is_refused_and_the_wait_goes_on`.
 - **Time limit.** The wait stops after 5 minutes (`SIGN_IN_TIMEOUT_S`) or when
-  the person presses Cancel. The listener handles one request at a time with a
-  0.25-second poll, accepts a single result, answers any later hit with 410, and
+  the person presses Cancel. The listener serves each connection on its own
+  thread and drops one that sends nothing for 5 seconds, so an idle local
+  connection can no longer hold it (independent review Q8). It polls every
+  0.25 seconds, accepts a single result, answers any later hit with 410, and
   is closed in a `finally`.
 - **Page.** The reply page reflects nothing from the request. It sends
   `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
@@ -97,18 +104,22 @@ explained at the end.
 - **Which binary runs (fixed).** The last place QUILL looked was `PATH`
   (`shutil.which`). On Windows, that also searches the current folder first, so
   a planted `pagescan.exe` could run in QUILL's place. That fallback is gone.
-  The order is now:
-  1. the Options path, which must be absolute;
-  2. `tools\scanner` beside the installed app;
-  3. the Mac app's `Resources/tools/scanner`;
-  4. a source checkout's `tools/scanner`;
-  5. `QUILL_SCANNER_TOOL`, which must be absolute;
+  The order is now (after the independent review, Q2):
+  1. `tools\scanner` beside the installed app;
+  2. the Mac app's `Resources/tools/scanner`;
+  3. a source checkout's `tools/scanner`;
+  4. the Options path;
+  5. `QUILL_SCANNER_TOOL`;
   6. the data folder.
 
-  The bundled copy now comes before the environment variable. A relative path
-  in Options or in the variable is ignored. Tests:
-  `test_path_and_relative_paths_are_never_searched` and
-  `test_the_bundled_tool_wins_over_the_environment_variable`.
+  The bundled copy comes first, so the Options path only stands in when there
+  is none. The Options path and the variable must be absolute paths on this
+  computer (never a UNC share or a mapped network drive), and a file must be
+  named `pagescan` (or `wia-scan.exe`). `scanner_tool_path` is a machine-local
+  setting, so a portable settings import never carries it. Tests:
+  `test_path_and_relative_paths_are_never_searched`,
+  `test_the_bundled_tool_wins_over_the_environment_variable` and
+  `test_options_can_never_point_at_a_network_or_another_program`.
 - **Its answer (fixed).** `pagescan` returns the paths of the pages it saved,
   and those pages can go on to OCR or to Scribe. QUILL now only takes paths that
   resolve inside the output folder it created. A broken or replaced tool
@@ -128,8 +139,10 @@ explained at the end.
   `COM9`, `LPT0` to `LPT9`, with or without an extension) gets a leading `_`.
   Test: `test_server_file_names_never_leave_the_folder`.
 - `unique_target` never overwrites a file. It adds " (2)", " (3)" and so on.
-- A download is written to `<name>.part` and renamed when complete.
-  `_write_whole` uses `write_bytes_atomic`.
+- A download is written to a partial file named for the job, and moved into
+  place in one `os.replace` only when every byte the server announced is on
+  disk (independent review Q5, `download.py`). `_write_whole` uses
+  `write_bytes_atomic`.
 - The presigned storage URL is fetched without the Scribe bearer token.
   Redirects are never followed automatically (`_NoRedirect`), so the token
   cannot leak to another host.
@@ -147,7 +160,8 @@ explained at the end.
   the file with mode 0600, and the replace keeps it.
 - What the queue holds: source paths, links, Scribe document ids, the chosen
   formats and the folder for results. It holds no token and no password. A
-  damaged file is read as an empty queue and is not executed.
+  damaged file is never executed, and since the independent review (Q11) it is
+  never written over either: writes refuse, and say so.
 
 ## Links and network
 
@@ -189,3 +203,109 @@ explained at the end.
 - **Token in the WebSocket URL.** Phoenix sockets authenticate with
   `?token=`. The connection is WSS, the library logger is held at WARNING, and
   a refused handshake is reported to the person as a fixed sentence.
+
+## Independent review
+
+A second reviewer, who had not written this code, reviewed the branch at
+`8c644eca5` on 2026-11-21 and reproduced ten failures with tests against the
+branch's own fake server. Those reproductions are now real tests, mostly in
+`tests/unit/core/test_scribe_review.py`, named for the finding they pin. Each
+finding the review ranked critical, high or medium-and-asked-for is listed with
+what was done; the reviewer's numbers are kept.
+
+### Critical
+
+- **Q1. Two apps could upload the same job.** The runner lock went stale after
+  20 seconds and was beaten only while the queue was idle, so any longer job let
+  a second app take it. *Fixed:* the runner beats the lock and renews the job's
+  claim from its own thread every 5 seconds while a job runs; `JobQueue.claim`
+  marks the job with the runner's pid and a lease under the strict lock, so
+  claiming is atomic across processes; and before the upload, each conversion
+  and each download the runner checks it still owns both, stopping quietly if
+  not. Tests run two runners against a job three times longer than the lock,
+  and an app that was frozen past the lock's age.
+
+### High
+
+- **Q2. An imported settings file could choose the scanner program.**
+  *Fixed* as described under "The pagescan subprocess" above: the bundled tool
+  first, only a local absolute path named `pagescan`, and the setting is
+  machine-local (with `scanner_device`, `scanner_device_name` and
+  `scribe_download_folder`).
+- **Q3. An unexpected error retried every second, forever, saving a new copy
+  each time.** *Fixed:* an error that is not one of Scribe's coded answers is
+  retried after 10 seconds, 1 minute and 5 minutes (set on the job, so jobs
+  behind it run), then the job ends "did not finish" with Retry. A saved format
+  is recorded on the job and never fetched again; the local library record is
+  best-effort; the runner loop backs off too.
+- **Q4. A job waiting for sign-in never resumed.** *Fixed:* signing in (in this
+  app or another, or a sign-in found at start) moves every paused job back to
+  waiting, and Retry is offered in that state.
+- **Q5. Downloads could be saved short, spliced from a stale partial, or blocked
+  by a complete one.** *Fixed* in `download.py`: the partial is named for the
+  job and resumed only when its sidecar records the server's `ETag` and total;
+  `Range` goes with `If-Range`; a 206 must start where the partial ends; a 416
+  on a complete partial finishes it; nothing is renamed until the announced
+  length is on disk; a drop mid-body (`IncompleteRead` included) resumes, and
+  after too many tries the job fails with the partial kept for Retry.
+- **Q6. A reconnect after the conversion had finished waited forever.**
+  *Fixed:* after waiting on a conversion already in progress the outputs are
+  read over REST before starting again, every 30 seconds of channel silence they
+  are read again (PRD 3.5's polling fallback), and `phx_close` counts as a
+  dropped channel.
+- **Q7. Channel `error` events all ended as a plain failure.** *Fixed:* they
+  map to the same coded errors as replies. `needs_purchase` leaves the job
+  needing pages with Buy Pages and the server's link (accepted only when it is
+  Scribe's own `https` page, which also answers low finding Q27);
+  `rate_limited` waits 1, 2, 4 and up to 10 minutes and is said once a job, on
+  upload too; `conversion_in_progress` keeps waiting.
+
+### Medium
+
+- **Q8. One idle local connection froze the sign-in listener.** *Fixed:* see
+  "The loopback sign-in listener".
+- **Q9. A PDF password skipped Send Next File.** *Fixed:* a password moves only
+  a job that is waiting for its password; a later file of a batch still waits.
+- **Q10. A lock file left by a crash disabled locking and stalled writes.**
+  *Fixed* in `file_lock.py`: the holder writes its pid, a lock older than 10
+  seconds is broken, and the strict form used for claims never writes
+  unguarded.
+- **Q11. One unreadable read erased the queue or the library.** *Fixed:* only a
+  missing file is empty; writes retry briefly and then refuse
+  (`QueueUnreadable`), a newer schema is read but not changed, and unknown
+  fields and rows are written back untouched.
+- **Q12. The Scribe offer replaced the Datalab offer.** *Fixed:* with both
+  available, one question offers Scribe for Documents, Datalab cloud OCR, or
+  keeping the local result.
+- **Q13. A result opened while the person was typing.** *Fixed:* PRD 7.4a's
+  typing check. A result opens on its own only after 3 seconds without a key
+  or click (`GetLastInputInfo`, which says when, never what).
+- **Q15. The details field was rewritten every second.** *Fixed:* it is
+  rewritten only when its text changes, keeps the reader's place, and never
+  takes focus.
+- **Q16. The "AI is off" note was not reachable by Tab.** *Fixed:* the sentence
+  is in the What will be sent field, and Send no longer saves the AI-off
+  starting value of Describe the pictures as the person's default.
+- **Q19. Escape on a scan dialog deleted every scanned page.** *Fixed:*
+  cancelling a save goes back to the choices; leaving the choices asks
+  "Discard the scanned pages?" with No as the default; a failure while saving
+  is said and the pages kept.
+- **Q20. A scanner with a feeder and a glass could not use its feeder.**
+  *Fixed:* such a scanner asks where to scan from, offering the last answer
+  first.
+- **Q23. Titles with a full stop got the wrong folder.** *Fixed:* only a real
+  input extension is cut from a title; a long file name keeps its extension and
+  is cut by bytes; Windows device names are guarded for folders too.
+
+### Still open
+
+These were not part of this round and stay open, with the reviewer's numbers:
+Q14 (a job run by another app is announced as finished "while QUILL was
+closed"), Q17 (Send before the lists load resets the language), Q18 (large files
+read whole, some on the UI thread), Q21 (the scan's unread pipes), Q22 (a stale
+My Scribe Documents list), Q24 (password handling details), Q25 (offline gives
+up after about two and a half minutes; an interrupted upload is not resumed),
+and the low findings other than Q27. Q33 is worth naming: the needs-pages
+sentence promises "Open Preview", which does not exist yet. The design note
+still says the NVDA, JAWS and Narrator passes are to do; the Windows tests and
+a screen-reader pass on the changed windows are the next step.

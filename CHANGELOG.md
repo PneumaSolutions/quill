@@ -11,10 +11,11 @@
   (AirScan/eSCL) scanners. On a Mac it replaces the earlier Image Capture
   code, so QUILL no longer needs the pyobjc-framework-ImageCaptureCore
   package.
-- **The glass first, then the feeder.** A scanner with a glass scans from it;
-  one with only a document feeder scans from the feeder. QUILL always asks
-  for the glass or the feeder by name, so a scanner whose parts are numbered
-  differently from one day to the next still scans.
+- **The glass or the feeder.** A scanner with both a glass and a document
+  feeder asks which to scan from, and offers your last answer first; one with
+  only a feeder scans from the feeder. QUILL always asks for the glass or the
+  feeder by name, so a scanner whose parts are numbered differently from one
+  day to the next still scans.
 - **An existing install keeps scanning.** On Windows QUILL still finds the
   tool under its old name, wia-scan.exe, until pagescan.exe is installed
   beside it. Options > Scanning, Scanner tool location, now works on a Mac
@@ -34,6 +35,33 @@
   keeps for devices. Convert from a Link only accepts web addresses that
   start with http:// or https://. About QUILL now says "Powered by Scribe for
   Documents".
+- **Scribe for Documents is steadier, after an independent review.** The
+  review and what was done about each finding are in
+  docs/design/scribe-security-review.md. Two QUILL apps can no longer send
+  the same document twice. A download that stops early is resumed rather
+  than saved short, and a leftover part of an older download is never mixed
+  in. An unexpected error is tried again a few times, each after a longer
+  wait, and then the job says it did not finish and offers Retry; it no
+  longer downloads a new copy every second. Jobs paused because your sign-in
+  ended carry on when you sign in again. A conversion that finished while
+  QUILL was reconnecting is downloaded instead of waited for. Running out of
+  pages offers Buy Pages, and when Scribe asks QUILL to slow down it waits a
+  little longer each time and says so once. A password no longer skips Send
+  Next File. A damaged or locked queue file is never written over. Titles
+  with a full stop, such as "1. Introduction", keep their whole name for
+  their folder. The sign-in can no longer be held up by another program
+  connecting to it.
+- **Fewer surprises for screen reader users.** The Scribe Conversions details
+  field is only rewritten when its text changes, so your place in it is kept.
+  The reason Describe the pictures starts off when AI is turned off is in the
+  "What will be sent" field, which Tab reaches. A finished result no longer
+  opens in a new tab while you are typing. Pressing Escape after scanning
+  asks before throwing the pages away, and cancelling a save goes back to
+  the choices. When both Scribe for Documents and Datalab cloud OCR are set
+  up, the offer after a weak OCR result lists both. Options > Scanning can
+  only point at a pagescan on this computer, never a network share, and the
+  bundled copy is always used when it is there; a shared settings file no
+  longer carries that path.
 
 ### More settings that stick: Studio, Media Player, Transcribe, Beacon, Weather, Radio and QUILL's dialogs (2026-11-20)
 

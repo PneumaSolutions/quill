@@ -1,11 +1,10 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<html xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc 3.12.1" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <title>Security review: Scribe for Documents and scanning in
-QUILL</title>
+  <title>scribe-security-review</title>
   <style>
     /* Default styles provided by pandoc.
     ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -181,68 +180,8 @@ QUILL</title>
       vertical-align: middle;
     }
   </style>
-  <style>
-    /* Accessible skip link: off-screen until it receives keyboard focus. */
-    .skip-link {
-      position: absolute;
-      left: -9999px;
-      top: 0;
-      background: #ffffff;
-      color: #1a1a1a;
-      padding: 0.5em 1em;
-      border: 2px solid #1a1a1a;
-      z-index: 1000;
-    }
-    .skip-link:focus { left: 0; }
-    /* The skip link above targets main, and a focusable main needs a ring for
-       the sighted keyboard user. These pages load no external stylesheet, so it
-       has to be inline; the colour is the site theme's --focus, hardcoded
-       because there is no token here. :focus-visible, not :focus -- tabindex="-1"
-       makes main the click-focus target for every paragraph inside it, so
-       :focus would box the whole page on any ordinary click. The offset is inset
-       because main is full-bleed and an outset ring gets clipped into two
-       vertical lines. */
-    main[tabindex="-1"]:focus-visible {
-      outline: 3px solid #b8540a;
-      outline-offset: -3px;
-    }
-    /* WCAG AA overrides (>= 4.5:1 on the light code background) for the
-       low-contrast default syntax-highlight token colors. */
-    code span.al, code span.er { color: #c00000; }
-    code span.an, code span.co, code span.cv { color: #5a5a5a; }
-    code span.ss { color: #8a3a5a; }
-    /* Pandoc's own styles.html partial, injected near the top of this template,
-       ships `table { display: block; overflow-x: auto; }`. display: block takes
-       the table role out of the accessibility tree in Blink and Gecko, and the
-       row and cell roles go with it, so every rendered table reads as a flat run
-       of words -- 62 of them in QUILL Lite's user guide alone, all of them
-       keyboard reference tables, on a site whose readers are overwhelmingly
-       screen-reader users. Restoring display: table is not a preference.
-
-       The scroll affordance it was there for is given up rather than moved,
-       because Pandoc emits a bare table with no wrapper element to hang overflow
-       on -- the wrapper pattern compare.html uses is not available here. So the
-       exchange is a certain and total loss of table semantics against a possible
-       sideways page scroll on the widest tables, and the cells are taught to
-       break so that stays possible rather than likely.
-
-       This override also covers the governance pages built by
-       .github/workflows/github-pages.yml, which installs Pandoc from apt at a
-       version nobody pins -- whatever styles.html that ships, this wins. */
-    table {
-      display: table;
-      overflow-x: visible;
-    }
-    table th,
-    table td {
-      overflow-wrap: break-word;
-      word-break: break-word;
-    }
-  </style>
 </head>
 <body>
-<a class="skip-link" href="#main-content">Skip to main content</a>
-<main id="main-content" tabindex="-1">
 <h1
 id="security-review-scribe-for-documents-and-scanning-in-quill">Security
 review: Scribe for Documents and scanning in QUILL</h1>
@@ -260,7 +199,7 @@ changed. Every fix has a unit test.</p>
 redirect with a wrong or missing <code>state</code> is refused and the
 wait goes on.</li>
 <li>QUILL no longer searches <code>PATH</code> for
-<code>pagescan</code>. A configured path must be absolute, and QUILL’s
+<code>pagescan</code>. A configured path must be absolute, and QUILL's
 bundled copy now wins over the environment variable.</li>
 <li>QUILL only takes scanned pages that are inside the folder it gave
 <code>pagescan</code>.</li>
@@ -275,6 +214,10 @@ dialog checked it, and only the prefix.</li>
 16 MB; before, there was no limit.</p>
 <p>Nothing that needs a server change was found. Two risks are accepted
 and explained at the end.</p>
+<p>An independent review later the same day found more, in reliability
+as well as security; each finding and what was done about it is in
+"Independent review" at the end. Where that changed something described
+below, the text below says so.</p>
 <h2 id="tokens">Tokens</h2>
 <ul>
 <li><strong>Where they live.</strong> <code>auth.TokenStore</code> keeps
@@ -286,12 +229,12 @@ Sign Out revokes the refresh token (RFC 7009) and wipes the
 namespace.</li>
 <li><strong>Logging.</strong> The <code>quill.core.scribe</code> package
 logs seven fixed sentences. None of them has a token, a URL with a query
-string, a password or a file’s contents. The loopback listener’s
+string, a password or a file's contents. The loopback listener's
 <code>log_message</code> is silenced, because the request line carries
 the authorization code. The <code>websockets</code> library logs the
 request line (with <code>?token=</code>) and frames at DEBUG, so the
 channel gives it its own logger that never goes below WARNING.</li>
-<li><strong>Errors.</strong> Error sentences are built from the server’s
+<li><strong>Errors.</strong> Error sentences are built from the server's
 own message and never from the request. Crash bundles also go through
 <code>quill/stability/redaction.py</code>, which removes
 <code>token=</code> and <code>password=</code> values and long
@@ -319,15 +262,17 @@ any program on the computer could call the listener first with
 (<code>secrets.token_urlsafe</code>) and sends it with the authorize
 request. The listener compares it in constant time
 (<code>hmac.compare_digest</code>). If it is wrong or missing, the
-listener answers 400 and keeps waiting for the real redirect. Scribe’s
+listener answers 400 and keeps waiting for the real redirect. Scribe's
 OAuth server (ex_oauth2_provider, <code>Response.add_state</code>) sends
 <code>state</code> back on success and on error, so nothing changes for
 the person signing in. Test:
 <code>test_a_redirect_without_the_right_state_is_refused_and_the_wait_goes_on</code>.</li>
 <li><strong>Time limit.</strong> The wait stops after 5 minutes
 (<code>SIGN_IN_TIMEOUT_S</code>) or when the person presses Cancel. The
-listener handles one request at a time with a 0.25-second poll, accepts
-a single result, answers any later hit with 410, and is closed in a
+listener serves each connection on its own thread and drops one that
+sends nothing for 5 seconds, so an idle local connection can no longer
+hold it (independent review Q8). It polls every 0.25 seconds, accepts a
+single result, answers any later hit with 410, and is closed in a
 <code>finally</code>.</li>
 <li><strong>Page.</strong> The reply page reflects nothing from the
 request. It sends <code>Cache-Control: no-store</code> and
@@ -339,7 +284,7 @@ request. It sends <code>Cache-Control: no-store</code> and
 It is never pre-filled and never saved.</li>
 <li>While the job runs, it is kept in memory in
 <code>ScribeRunner._passwords</code>, keyed by job id. It goes to Scribe
-in the upload’s multipart body (HTTPS) or in the channel’s
+in the upload's multipart body (HTTPS) or in the channel's
 <code>start_conversion</code> message (WSS), and nowhere else.</li>
 <li>When another app in the family runs the queue, the password is
 handed over through the secret vault (<code>hand_over_password</code>),
@@ -358,27 +303,33 @@ reach <code>queue.json</code>. No log line includes it, and the
 <code>subprocess.run</code> or <code>Popen</code> without
 <code>shell=True</code>, with <code>CREATE_NO_WINDOW</code> and a
 timeout. The device id, resolution and output folder are separate
-arguments. <code>pagescan</code>’s parser takes the word after
+arguments. <code>pagescan</code>'s parser takes the word after
 <code>--device</code> as the value even if it starts with
 <code>-</code>. The source is always <code>flatbed</code> or
 <code>feeder</code>, never text from the device.</p></li>
 <li><p><strong>Which binary runs (fixed).</strong> The last place QUILL
 looked was <code>PATH</code> (<code>shutil.which</code>). On Windows,
 that also searches the current folder first, so a planted
-<code>pagescan.exe</code> could run in QUILL’s place. That fallback is
-gone. The order is now:</p>
+<code>pagescan.exe</code> could run in QUILL's place. That fallback is
+gone. The order is now (after the independent review, Q2):</p>
 <ol type="1">
-<li>the Options path, which must be absolute;</li>
 <li><code>tools\scanner</code> beside the installed app;</li>
-<li>the Mac app’s <code>Resources/tools/scanner</code>;</li>
-<li>a source checkout’s <code>tools/scanner</code>;</li>
-<li><code>QUILL_SCANNER_TOOL</code>, which must be absolute;</li>
+<li>the Mac app's <code>Resources/tools/scanner</code>;</li>
+<li>a source checkout's <code>tools/scanner</code>;</li>
+<li>the Options path;</li>
+<li><code>QUILL_SCANNER_TOOL</code>;</li>
 <li>the data folder.</li>
 </ol>
-<p>The bundled copy now comes before the environment variable. A
-relative path in Options or in the variable is ignored. Tests:
-<code>test_path_and_relative_paths_are_never_searched</code> and
-<code>test_the_bundled_tool_wins_over_the_environment_variable</code>.</p></li>
+<p>The bundled copy comes first, so the Options path only stands in when
+there is none. The Options path and the variable must be absolute paths
+on this computer (never a UNC share or a mapped network drive), and a
+file must be named <code>pagescan</code> (or <code>wia-scan.exe</code>).
+<code>scanner_tool_path</code> is a machine-local setting, so a portable
+settings import never carries it. Tests:
+<code>test_path_and_relative_paths_are_never_searched</code>,
+<code>test_the_bundled_tool_wins_over_the_environment_variable</code>
+and
+<code>test_options_can_never_point_at_a_network_or_another_program</code>.</p></li>
 <li><p><strong>Its answer (fixed).</strong> <code>pagescan</code>
 returns the paths of the pages it saved, and those pages can go on to
 OCR or to Scribe. QUILL now only takes paths that resolve inside the
@@ -390,34 +341,36 @@ the last object counts.</p></li>
 </ul>
 <h2 id="downloaded-files">Downloaded files</h2>
 <ul>
-<li>A result’s file name comes from the server
+<li>A result's file name comes from the server
 (<code>Content-Disposition</code>, or the presigned URL).
 <code>safe_filename</code> turns <code>&lt; &gt; : " / \ | ? *</code>
 and control characters into <code>_</code> and trims leading and
 trailing dots and spaces, so <code>../x</code>, <code>..\x</code>,
 <code>/etc/x</code> and <code>C:\x</code> all stay inside the chosen
-folder. A name with nothing left becomes “Scribe result”.</li>
+folder. A name with nothing left becomes "Scribe result".</li>
 <li><strong>Fixed:</strong> a Windows device name (<code>CON</code>,
 <code>PRN</code>, <code>AUX</code>, <code>NUL</code>, <code>COM0</code>
 to <code>COM9</code>, <code>LPT0</code> to <code>LPT9</code>, with or
 without an extension) gets a leading <code>_</code>. Test:
 <code>test_server_file_names_never_leave_the_folder</code>.</li>
-<li><code>unique_target</code> never overwrites a file. It adds “ (2)“,
-“ (3)” and so on.</li>
-<li>A download is written to <code>&lt;name&gt;.part</code> and renamed
-when complete. <code>_write_whole</code> uses
+<li><code>unique_target</code> never overwrites a file. It adds " (2)",
+" (3)" and so on.</li>
+<li>A download is written to a partial file named for the job, and moved
+into place in one <code>os.replace</code> only when every byte the
+server announced is on disk (independent review Q5,
+<code>download.py</code>). <code>_write_whole</code> uses
 <code>write_bytes_atomic</code>.</li>
 <li>The presigned storage URL is fetched without the Scribe bearer
 token. Redirects are never followed automatically
 (<code>_NoRedirect</code>), so the token cannot leak to another
 host.</li>
-<li>A result opens in QUILL’s editor or Media Player, or its folder is
+<li>A result opens in QUILL's editor or Media Player, or its folder is
 shown. A downloaded file is never run.</li>
 </ul>
 <h2 id="queue-and-lock-files">Queue and lock files</h2>
 <ul>
 <li><code>queue.json</code> and <code>runner.lock</code> live in
-<code>&lt;QUILL data&gt;/scribe</code>, the person’s own profile folder
+<code>&lt;QUILL data&gt;/scribe</code>, the person's own profile folder
 (<code>%APPDATA%</code> on Windows,
 <code>~/Library/Application Support</code> on a Mac), which only that
 account can write to.</li>
@@ -429,8 +382,9 @@ folder, <code>fsync</code>, then an atomic replace. On macOS and Linux,
 keeps it.</li>
 <li>What the queue holds: source paths, links, Scribe document ids, the
 chosen formats and the folder for results. It holds no token and no
-password. A damaged file is read as an empty queue and is not
-executed.</li>
+password. A damaged file is never executed, and since the independent
+review (Q11) it is never written over either: writes refuse, and say
+so.</li>
 </ul>
 <h2 id="links-and-network">Links and network</h2>
 <ul>
@@ -445,11 +399,11 @@ through the check. <code>file:</code>, <code>javascript:</code>,
 <li>Every REST call goes through <code>scribe/http.request</code>. It
 accepts HTTPS only, with certificate checks
 (<code>quill.core.net</code>); plain HTTP is allowed only to the
-loopback address the tests’ fake server uses. A dev-build environment
+loopback address the tests' fake server uses. A dev-build environment
 variable that points QUILL at another server is ignored in release
 builds.</li>
 <li><strong>WebSocket size (fixed).</strong> The channel used
-<code>max_size=None</code>. Scribe’s events are small JSON, so the limit
+<code>max_size=None</code>. Scribe's events are small JSON, so the limit
 is now 16 MB, and a broken or hostile server can no longer fill
 memory.</li>
 </ul>
@@ -473,8 +427,8 @@ change.</li>
 <ul>
 <li><strong>Account page link.</strong> Open My Scribe Account calls
 <code>/auth/browser_from_oauth?token=&lt;access token&gt;</code>, the
-way Pneuma’s own client does, so the browser opens already signed in.
-The token can then appear in the browser’s history. It expires within
+way Pneuma's own client does, so the browser opens already signed in.
+The token can then appear in the browser's history. It expires within
 two hours, and Sign Out revokes the refresh token. Fixing this needs a
 server endpoint that takes a one-time code instead.</li>
 <li><strong>Token in the WebSocket URL.</strong> Phoenix sockets
@@ -482,6 +436,124 @@ authenticate with <code>?token=</code>. The connection is WSS, the
 library logger is held at WARNING, and a refused handshake is reported
 to the person as a fixed sentence.</li>
 </ul>
-</main>
+<h2 id="independent-review">Independent review</h2>
+<p>A second reviewer, who had not written this code, reviewed the branch
+at <code>8c644eca5</code> on 2026-11-21 and reproduced ten failures with
+tests against the branch's own fake server. Those reproductions are now
+real tests, mostly in
+<code>tests/unit/core/test_scribe_review.py</code>, named for the
+finding they pin. Each finding the review ranked critical, high or
+medium-and-asked-for is listed with what was done; the reviewer's
+numbers are kept.</p>
+<h3 id="critical">Critical</h3>
+<ul>
+<li><strong>Q1. Two apps could upload the same job.</strong> The runner
+lock went stale after 20 seconds and was beaten only while the queue was
+idle, so any longer job let a second app take it. <em>Fixed:</em> the
+runner beats the lock and renews the job's claim from its own thread
+every 5 seconds while a job runs; <code>JobQueue.claim</code> marks the
+job with the runner's pid and a lease under the strict lock, so claiming
+is atomic across processes; and before the upload, each conversion and
+each download the runner checks it still owns both, stopping quietly if
+not. Tests run two runners against a job three times longer than the
+lock, and an app that was frozen past the lock's age.</li>
+</ul>
+<h3 id="high">High</h3>
+<ul>
+<li><strong>Q2. An imported settings file could choose the scanner
+program.</strong> <em>Fixed</em> as described under "The pagescan
+subprocess" above: the bundled tool first, only a local absolute path
+named <code>pagescan</code>, and the setting is machine-local (with
+<code>scanner_device</code>, <code>scanner_device_name</code> and
+<code>scribe_download_folder</code>).</li>
+<li><strong>Q3. An unexpected error retried every second, forever,
+saving a new copy each time.</strong> <em>Fixed:</em> an error that is
+not one of Scribe's coded answers is retried after 10 seconds, 1 minute
+and 5 minutes (set on the job, so jobs behind it run), then the job ends
+"did not finish" with Retry. A saved format is recorded on the job and
+never fetched again; the local library record is best-effort; the runner
+loop backs off too.</li>
+<li><strong>Q4. A job waiting for sign-in never resumed.</strong>
+<em>Fixed:</em> signing in (in this app or another, or a sign-in found
+at start) moves every paused job back to waiting, and Retry is offered
+in that state.</li>
+<li><strong>Q5. Downloads could be saved short, spliced from a stale
+partial, or blocked by a complete one.</strong> <em>Fixed</em> in
+<code>download.py</code>: the partial is named for the job and resumed
+only when its sidecar records the server's <code>ETag</code> and total;
+<code>Range</code> goes with <code>If-Range</code>; a 206 must start
+where the partial ends; a 416 on a complete partial finishes it; nothing
+is renamed until the announced length is on disk; a drop mid-body
+(<code>IncompleteRead</code> included) resumes, and after too many tries
+the job fails with the partial kept for Retry.</li>
+<li><strong>Q6. A reconnect after the conversion had finished waited
+forever.</strong> <em>Fixed:</em> after waiting on a conversion already
+in progress the outputs are read over REST before starting again, every
+30 seconds of channel silence they are read again (PRD 3.5's polling
+fallback), and <code>phx_close</code> counts as a dropped channel.</li>
+<li><strong>Q7. Channel <code>error</code> events all ended as a plain
+failure.</strong> <em>Fixed:</em> they map to the same coded errors as
+replies. <code>needs_purchase</code> leaves the job needing pages with
+Buy Pages and the server's link (accepted only when it is Scribe's own
+<code>https</code> page, which also answers low finding Q27);
+<code>rate_limited</code> waits 1, 2, 4 and up to 10 minutes and is said
+once a job, on upload too; <code>conversion_in_progress</code> keeps
+waiting.</li>
+</ul>
+<h3 id="medium">Medium</h3>
+<ul>
+<li><strong>Q8. One idle local connection froze the sign-in
+listener.</strong> <em>Fixed:</em> see "The loopback sign-in
+listener".</li>
+<li><strong>Q9. A PDF password skipped Send Next File.</strong>
+<em>Fixed:</em> a password moves only a job that is waiting for its
+password; a later file of a batch still waits.</li>
+<li><strong>Q10. A lock file left by a crash disabled locking and
+stalled writes.</strong> <em>Fixed</em> in <code>file_lock.py</code>:
+the holder writes its pid, a lock older than 10 seconds is broken, and
+the strict form used for claims never writes unguarded.</li>
+<li><strong>Q11. One unreadable read erased the queue or the
+library.</strong> <em>Fixed:</em> only a missing file is empty; writes
+retry briefly and then refuse (<code>QueueUnreadable</code>), a newer
+schema is read but not changed, and unknown fields and rows are written
+back untouched.</li>
+<li><strong>Q12. The Scribe offer replaced the Datalab offer.</strong>
+<em>Fixed:</em> with both available, one question offers Scribe for
+Documents, Datalab cloud OCR, or keeping the local result.</li>
+<li><strong>Q13. A result opened while the person was typing.</strong>
+<em>Fixed:</em> PRD 7.4a's typing check. A result opens on its own only
+after 3 seconds without a key or click (<code>GetLastInputInfo</code>,
+which says when, never what).</li>
+<li><strong>Q15. The details field was rewritten every second.</strong>
+<em>Fixed:</em> it is rewritten only when its text changes, keeps the
+reader's place, and never takes focus.</li>
+<li><strong>Q16. The "AI is off" note was not reachable by Tab.</strong>
+<em>Fixed:</em> the sentence is in the What will be sent field, and Send
+no longer saves the AI-off starting value of Describe the pictures as
+the person's default.</li>
+<li><strong>Q19. Escape on a scan dialog deleted every scanned
+page.</strong> <em>Fixed:</em> cancelling a save goes back to the
+choices; leaving the choices asks "Discard the scanned pages?" with No
+as the default; a failure while saving is said and the pages kept.</li>
+<li><strong>Q20. A scanner with a feeder and a glass could not use its
+feeder.</strong> <em>Fixed:</em> such a scanner asks where to scan from,
+offering the last answer first.</li>
+<li><strong>Q23. Titles with a full stop got the wrong folder.</strong>
+<em>Fixed:</em> only a real input extension is cut from a title; a long
+file name keeps its extension and is cut by bytes; Windows device names
+are guarded for folders too.</li>
+</ul>
+<h3 id="still-open">Still open</h3>
+<p>These were not part of this round and stay open, with the reviewer's
+numbers: Q14 (a job run by another app is announced as finished "while
+QUILL was closed"), Q17 (Send before the lists load resets the
+language), Q18 (large files read whole, some on the UI thread), Q21 (the
+scan's unread pipes), Q22 (a stale My Scribe Documents list), Q24
+(password handling details), Q25 (offline gives up after about two and a
+half minutes; an interrupted upload is not resumed), and the low
+findings other than Q27. Q33 is worth naming: the needs-pages sentence
+promises "Open Preview", which does not exist yet. The design note still
+says the NVDA, JAWS and Narrator passes are to do; the Windows tests and
+a screen-reader pass on the changed windows are the next step.</p>
 </body>
 </html>
