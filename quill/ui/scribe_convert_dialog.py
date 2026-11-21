@@ -27,7 +27,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from quill.core.scribe.consent import (
-    AI_OFF_NOTE,
     SourceInfo,
     consent_text,
     pages_text,
@@ -122,10 +121,8 @@ class ScribeConvertDialog:
         from quill.ui.scribe_settings_panel import ScribeSettingsGroups
 
         self.groups = ScribeSettingsGroups(self.panel, body, host, settings)
-        if ai_off:
-            note = wx.StaticText(self.panel, label=AI_OFF_NOTE)
-            note.Wrap(500)
-            body.Add(note, 0, wx.ALL, 6)
+        # With AI off, why Describe the pictures starts off is in "What will be
+        # sent" (consent_text), which Tab reaches; a static note would not be.
 
         self.account_defaults = wx.CheckBox(
             self.panel,
@@ -199,6 +196,7 @@ class ScribeConvertDialog:
                 first_upload=self.first_upload,
                 reuse_title=self.reuse_title,
                 describe_pictures=bool(self.groups.describe.GetValue()),
+                ai_off=self.ai_off,
             )
         )
         self.send.Enable(bool(chosen))

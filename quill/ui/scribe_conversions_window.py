@@ -116,7 +116,7 @@ class ScribeConversionsWindow:
         if not jobs:
             self.list.DeleteAllItems()
             self._rows = []
-            self.details.ChangeValue(
+            self._set_details(
                 "No conversions. Convert a document with Scribe for Documents and it appears here."
             )
             return
@@ -153,7 +153,23 @@ class ScribeConversionsWindow:
     def _show_details(self) -> None:
         job = self.selected()
         if job is not None:
-            self.details.ChangeValue(job.details())  # silently: the row is what is read
+            self._set_details(job.details())  # silently: the row is what is read
+
+    def _set_details(self, text: str) -> None:
+        """Rewrite the details field only when its text changed, keeping the place.
+
+        The queue changes about once a second during a conversion; rewriting
+        the same text each time put the caret back at the start, so someone
+        reading the details by speech or braille kept losing their place
+        (independent review Q15). Focus is never moved.
+        """
+        if self.details.GetValue() == text:
+            return
+        focused = bool(self.details.HasFocus())
+        point = int(self.details.GetInsertionPoint()) if focused else 0
+        self.details.ChangeValue(text)
+        if focused:
+            self.details.SetInsertionPoint(min(point, int(self.details.GetLastPosition())))
 
     # ------------------------------------------------------------ commands
 

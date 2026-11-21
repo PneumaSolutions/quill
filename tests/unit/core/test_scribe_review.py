@@ -666,3 +666,15 @@ def test_q8_an_idle_local_connection_never_freezes_the_sign_in_wait() -> None:
     finally:
         idle.close()
         catcher.close()
+
+
+# ------------------------------------------------------------------ Q16: the AI-off note
+
+
+def test_q16_the_ai_off_reason_is_in_the_field_tab_reaches() -> None:
+    from quill.core.scribe.consent import AI_OFF_NOTE, SourceInfo, consent_text
+
+    source = SourceInfo(path=Path("Notes.pdf"), size=10)
+    assert AI_OFF_NOTE in consent_text([source], ai_off=True)
+    assert AI_OFF_NOTE not in consent_text([source])
+    assert AI_OFF_NOTE in consent_text([], reuse_title="Notes", ai_off=True)

@@ -12,8 +12,10 @@ speaks. Sentences arrive here on the UI thread:
 * a job that needs the person says so once and never opens a dialog.
 
 A result opens on its own only in the app that started the job, only if that
-app is in front, and only when Options > Open each result says Yes (PRD
-7.4a and 9): Word opens in QUILL as rich text and HTML in QUILL (an Import
+app is in front, only if the person has not typed in the last
+:data:`TYPING_QUIET_S` seconds (so a new tab never takes the keys someone is
+typing; independent review Q13), and only when Options > Open each result
+says Yes (PRD 7.4a and 9): Word opens in QUILL as rich text and HTML in QUILL (an Import
 result as a new unsaved tab named "<stem> (Scribe)"), BRF in the braille
 view, MP3 and DAISY in Quill Media Player (DAISY at its navigation, PRD 8.3)
 where this build has it and with the computer's player otherwise; PDF, EPUB,
@@ -37,6 +39,8 @@ APP_NAME = "QUILL"
 OPENS_IN_QUILL = frozenset({"docx", "html"})
 OPENS_IN_BRAILLE = frozenset({"brf"})
 OPENS_IN_PLAYER = frozenset({"mp3", "daisy"})
+#: A result opens on its own only after this long without a key or a click.
+TYPING_QUIET_S = 3.0
 
 
 class ScribeQueueMixin:
@@ -151,12 +155,20 @@ class ScribeQueueMixin:
         mode = str(getattr(getattr(self, "settings", None), "scribe_open_results", "yes"))
         here = job.app == APP_NAME and job.owner_pid == os.getpid()
         front = self._scribe_front()
-        if here and front and mode == "yes" and job.results:
+        if here and front and mode == "yes" and job.results and not self._scribe_typing():
             opened = self._scribe_open_default(job)
         offer = mode == "offer" or (bool(job.results) and not opened and mode != "no")
         sentence = q.result_sentence(job, opened=opened, app=APP_NAME, offer=offer)
         self._scribe_last_message = sentence
         self._announce(sentence)
+
+    @staticmethod
+    def _scribe_typing() -> bool:
+        """The person typed (or clicked) in the last few seconds (PRD 7.4a)."""
+        from quill.platform.windows.input_activity import input_idle_seconds
+
+        idle = input_idle_seconds()
+        return idle is not None and idle < TYPING_QUIET_S
 
     def _scribe_front(self) -> bool:
         try:

@@ -108,6 +108,11 @@ class _Host(ScribeDocumentsMixin, ScribeQueueMixin):
             register=lambda cid, title, handler, binding: self.registered.append((cid, title))
         )
 
+    typing = False  # the person typed in the last few seconds (PRD 7.4a)
+
+    def _scribe_typing(self):
+        return self.typing
+
     def _binding_for(self, _command_id):
         return None
 
@@ -498,3 +503,99 @@ def test_scribe_status_says_the_current_job(scribe) -> None:
 def test_the_modules_never_show_a_modal_directly() -> None:
     for module in (main_frame_scribe, main_frame_scribe_queue, scribe_convert_dialog):
         assert ".ShowModal(" not in Path(module.__file__).read_text(encoding="utf-8")
+
+
+# ------------------------------------------------------------------ independent review
+
+
+def test_a_result_never_opens_while_the_person_is_typing(scribe, tmp_path) -> None:
+    """Q13: PRD 7.4a's typing check; a new tab under the person's hands takes their keys."""
+    docx = tmp_path / "Notes.docx"
+    docx.write_text("x")
+    host = _Host()
+    host.typing = True
+    job = _job(app="QUILL", results=[str(docx)], done_formats=["docx"], state=q.DONE)
+    host._scribe_job_done(job)
+    assert host.opened == []
+    assert host.announcements[-1].endswith("Open it from Scribe Conversions.")
+
+
+def test_the_typing_check_reads_the_systems_last_input(monkeypatch) -> None:
+    from quill.platform.windows import input_activity
+
+    monkeypatch.setattr(input_activity, "input_idle_seconds", lambda: 1.0)
+    assert ScribeQueueMixin._scribe_typing() is True
+    monkeypatch.setattr(input_activity, "input_idle_seconds", lambda: 10.0)
+    assert ScribeQueueMixin._scribe_typing() is False
+    monkeypatch.setattr(input_activity, "input_idle_seconds", lambda: None)
+    assert ScribeQueueMixin._scribe_typing() is False  # cannot tell: as before
+
+
+def test_ai_off_keeps_the_persons_own_picture_default(scribe, pdf, monkeypatch) -> None:
+    """Q16: with AI off the dialog starts Describe the pictures off; Send must not
+    save that as the person's own default."""
+    from quill.core.scribe.consent import describe_source
+
+    host = _Host()
+    host.settings.scribe_local_settings = {"add_image_descriptions": True}
+    host._scribe_ai_off = lambda: True
+    off = DocumentSettings(add_image_descriptions=False)
+    _ConvertDialog.request = ConvertRequest(formats=["docx"], settings=off)
+    _convert(host, describe_source(pdf))
+    assert host.settings.scribe_local_settings["add_image_descriptions"] is True
+    [job] = q.JobQueue().jobs()
+    assert job.settings["add_image_descriptions"] is False  # this document: as sent
+
+
+class _Details:
+    """A read-only text field: counts rewrites and keeps a caret."""
+
+    def __init__(self, focused: bool = False) -> None:
+        self.value, self.point, self.writes, self.focused = "", 0, 0, focused
+
+    def GetValue(self):  # noqa: N802
+        return self.value
+
+    def ChangeValue(self, text):  # noqa: N802
+        self.value, self.point, self.writes = text, 0, self.writes + 1
+
+    def HasFocus(self):  # noqa: N802
+        return self.focused
+
+    def GetInsertionPoint(self):  # noqa: N802
+        return self.point
+
+    def SetInsertionPoint(self, point):  # noqa: N802
+        self.point = point
+
+    def GetLastPosition(self):  # noqa: N802
+        return len(self.value)
+
+    def SetFocus(self):  # noqa: N802
+        raise AssertionError("the details field never takes focus")
+
+
+def test_the_details_field_is_rewritten_only_when_it_changes() -> None:
+    """Q15: rewriting the same text each second threw a reader back to the top."""
+    from quill.ui.scribe_conversions_window import ScribeConversionsWindow
+
+    window = object.__new__(ScribeConversionsWindow)
+    window.details = _Details(focused=True)
+    window._set_details("40 percent. Word: converting, 40 percent.")
+    window.details.point = 12  # the person is reading partway along
+    for _ in range(5):
+        window._set_details("40 percent. Word: converting, 40 percent.")
+    assert window.details.writes == 1 and window.details.point == 12
+    window._set_details("45 percent. Word: converting, 45 percent.")
+    assert window.details.writes == 2 and window.details.point == 12  # place kept
+    window._set_details("Done.")
+    assert window.details.point == len("Done.")  # clamped to the shorter text
+
+
+def test_needs_sign_in_offers_retry_and_sign_in() -> None:
+    from quill.ui.scribe_conversions_window import ScribeConversionsWindow
+
+    window = object.__new__(ScribeConversionsWindow)
+    window.host = SimpleNamespace(scribe_sign_in=lambda: None)
+    labels = [label for label, _a in window._commands(_job(state=q.NEEDS_SIGNIN))]
+    assert "&Sign In..." in labels and "&Retry" in labels

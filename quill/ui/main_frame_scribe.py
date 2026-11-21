@@ -404,7 +404,13 @@ class ScribeDocumentsMixin:
         if settings is None:
             return
         settings.scribe_last_formats = ",".join(request.formats)
-        settings.scribe_local_settings = request.settings.stored()
+        stored = request.settings.stored()
+        if self._scribe_ai_off() and not stored.get("add_image_descriptions"):
+            # The dialog started it off only because AI is off in QUILL; that
+            # is not the person's choice, so their own default is kept (Q16).
+            previous = getattr(settings, "scribe_local_settings", {}) or {}
+            stored["add_image_descriptions"] = bool(previous.get("add_image_descriptions", True))
+        settings.scribe_local_settings = stored
         settings.scribe_privacy_told = True
         try:
             from quill.core.settings import save_settings

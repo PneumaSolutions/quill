@@ -132,13 +132,20 @@ def consent_text(
     first_upload: bool = False,
     reuse_title: str = "",
     describe_pictures: bool = True,
+    ai_off: bool = False,
 ) -> str:
-    """The "What will be sent" text, line by line (PRD 7.3, part 1)."""
+    """The "What will be sent" text, line by line (PRD 7.3, part 1).
+
+    With AI turned off in QUILL it also says why Describe the pictures starts
+    off (PRD 10.1.4): this field is reachable by Tab, where a static note
+    between controls was not (independent review Q16).
+    """
     if reuse_title:
-        return (
+        reused = (
             f"No file is sent. Scribe makes these formats from {reuse_title}, already in "
             "your account."
         )
+        return f"{reused}\n{AI_OFF_NOTE}" if ai_off else reused
     if len(sources) == 1:
         source = sources[0]
         if source.path is None:
@@ -166,6 +173,8 @@ def consent_text(
         )
     if first_upload:
         lines.append(PRIVACY_FIRST_UPLOAD)
+    if ai_off:
+        lines.append(AI_OFF_NOTE)
     return "\n".join(lines)
 
 
