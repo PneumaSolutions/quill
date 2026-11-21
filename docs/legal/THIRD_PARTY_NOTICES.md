@@ -26,7 +26,7 @@ This file is generated from quill/data/third_party/components.json by quill/tool
 
 ## Summary by licence
 
-- MIT License: 75 components
+- MIT License: 76 components
 - BSD 3-Clause License: 23 components
 - Apache License, version 2.0: 18 components
 - GNU General Public License, version 2: 10 components
@@ -1126,7 +1126,7 @@ Python itself and libraries shipped in the shared runtime or an app's own depend
 
 ### websockets
 
-- **What it is:** WebSocket connections for live transcription.
+- **What it is:** WebSocket connections: live transcription, and in QUILL, Scribe for Documents' document channel.
 - **Included in:** Every product in the family.
 - **Version:** 17.2
 - **Licence:** BSD-3-Clause
@@ -1322,6 +1322,17 @@ Python itself and libraries shipped in the shared runtime or an app's own depend
 - **Upstream:** https://wordpress.org/
 - **How it reaches you:** Bundled: it is inside the installer or the portable zip.
 - **What the licence asks of us:** Ship the licence text. Provide the complete corresponding source of the component, either alongside it or by a written offer valid for at least three years. Any program that is a derivative work must also be offered under GPL-2.0-compatible terms.
+
+### pagescan (pagescan.exe)
+
+- **What it is:** Scans pages from flatbed and document-feeder scanners for File > Import > Scan Pages (Windows Image Acquisition on Windows, ImageCaptureCore on macOS). Run as a separate, unmodified program from tools\scanner beside QUILL. The licences of the Rust crates built into it are in the project's THIRD-PARTY-LICENSES.html.
+- **Included in:** QUILL for All.
+- **Version:** 0.1.0
+- **Licence:** MIT
+- **Copyright:** Copyright (c) 2026 Pneuma Solutions
+- **Upstream:** https://github.com/PneumaSolutions/pagescan
+- **How it reaches you:** Bundled: it is inside the installer or the portable zip.
+- **What the licence asks of us:** Keep the copyright notice and the permission notice with every copy.
 
 ## Audio and video
 
@@ -5053,7 +5064,7 @@ Library.
 
 ### MIT License
 
-Used by: ACB Large Print, quill-social, wx-accessible-webview, accessible_output2, annotated-types, AnyIO, attrs, autoupdate (vendored), Brotli, charset-normalizer, chat-downloader, colorlog, comtypes, curl_cffi, docstring_parser, et_xmlfile, Microsoft Copilot SDK (copilot), GitHub Copilot SDK 1.x (legacy runtime package), h11, Git for Windows (MinGit) and GitHub CLI, keyring, latex2mathml, libffi, libipld, libloader, MinGW-w64 runtime (libgcc_s_seh, libstdc++, libwinpthread), openpyxl, pdfminer.six, pdfplumber, pip, platform_utils, platformdirs, pydantic, pydantic-core, python-docx, python-pptx, six, python-sounddevice (with PortAudio), typing-inspection, PyWinRT (winrt-runtime and the Windows.* projections), PyYAML, RapidFuzz, setuptools, sherpa-onnx (with ONNX Runtime), sound_lib (with the BASS audio libraries), tomli, tqdm, truststore, urllib3, yt-dlp-ejs, Deno (deno.exe), ripgrep (rg.exe), TG Drop Deck (adapted code), Dictation models: Moonshine tiny (English), Whisper tiny.en and tiny (ONNX), Silero VAD, Kokoro-82M voices and kokoro-onnx, ptts (Phonon text-to-speech runtime), MathCAT, Piper text-to-speech engine, Whisper models (GGML format), whisper.cpp, Emoji catalog (Unicode emoji-test.txt, CLDR annotations, iamcal/emoji-data), BlindRadio network table, Image Description Toolkit (ideas and image prompt text), App icons, Page-turn sound (quill/assets/audio/page_turn.wav), Dial tuning hiss (quill/assets/audio/dial_hiss_low.wav and dial_hiss_medium.wav), QUILL sound packs (Ink and the indent-tone packs), VS Code accessibility signal sounds (the VS Code Signals sound pack), Weather alert sound (quill/assets/audio/weather_alert.wav), Test and lint tools (pytest, ruff, mypy and their plugins), Node.js (node.exe), VS Code HTML, CSS, JSON and Markdown language servers (vscode-langservers-extracted), Pyright, Prettier, GitHub REST API description.
+Used by: ACB Large Print, quill-social, wx-accessible-webview, accessible_output2, annotated-types, AnyIO, attrs, autoupdate (vendored), Brotli, charset-normalizer, chat-downloader, colorlog, comtypes, curl_cffi, docstring_parser, et_xmlfile, Microsoft Copilot SDK (copilot), GitHub Copilot SDK 1.x (legacy runtime package), h11, Git for Windows (MinGit) and GitHub CLI, keyring, latex2mathml, libffi, libipld, libloader, MinGW-w64 runtime (libgcc_s_seh, libstdc++, libwinpthread), openpyxl, pdfminer.six, pdfplumber, pip, platform_utils, platformdirs, pydantic, pydantic-core, python-docx, python-pptx, six, python-sounddevice (with PortAudio), typing-inspection, PyWinRT (winrt-runtime and the Windows.* projections), PyYAML, RapidFuzz, setuptools, sherpa-onnx (with ONNX Runtime), sound_lib (with the BASS audio libraries), tomli, tqdm, truststore, urllib3, yt-dlp-ejs, Deno (deno.exe), ripgrep (rg.exe), TG Drop Deck (adapted code), Dictation models: Moonshine tiny (English), Whisper tiny.en and tiny (ONNX), Silero VAD, Kokoro-82M voices and kokoro-onnx, ptts (Phonon text-to-speech runtime), MathCAT, Piper text-to-speech engine, Whisper models (GGML format), whisper.cpp, Emoji catalog (Unicode emoji-test.txt, CLDR annotations, iamcal/emoji-data), BlindRadio network table, Image Description Toolkit (ideas and image prompt text), App icons, Page-turn sound (quill/assets/audio/page_turn.wav), Dial tuning hiss (quill/assets/audio/dial_hiss_low.wav and dial_hiss_medium.wav), QUILL sound packs (Ink and the indent-tone packs), VS Code accessibility signal sounds (the VS Code Signals sound pack), Weather alert sound (quill/assets/audio/weather_alert.wav), Test and lint tools (pytest, ruff, mypy and their plugins), Node.js (node.exe), VS Code HTML, CSS, JSON and Markdown language servers (vscode-langservers-extracted), Pyright, Prettier, pagescan (pagescan.exe), GitHub REST API description.
 
 What it asks of us: Keep the copyright notice and the permission notice with every copy.
 

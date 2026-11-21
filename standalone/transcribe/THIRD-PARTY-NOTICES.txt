@@ -1079,7 +1079,7 @@ What the licence asks of us: Ship the licence text and keep copyright notices. P
 websockets
 ----------
 
-What it is: WebSocket connections for live transcription.
+What it is: WebSocket connections: live transcription, and in QUILL, Scribe for Documents' document channel.
 Version: 17.2
 Licence: BSD-3-Clause
 Copyright: Copyright (c) Aymeric Augustin and contributors

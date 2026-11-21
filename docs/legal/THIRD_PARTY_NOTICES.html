@@ -213,7 +213,7 @@ quill/tools/build_third_party_notices.py. Do not edit it by hand.</p>
 </ul>
 <h2 id="summary-by-licence">Summary by licence</h2>
 <ul>
-<li>MIT License: 75 components</li>
+<li>MIT License: 76 components</li>
 <li>BSD 3-Clause License: 23 components</li>
 <li>Apache License, version 2.0: 18 components</li>
 <li>GNU General Public License, version 2: 10 components</li>
@@ -1955,8 +1955,9 @@ carries. Say so if we changed the component.</li>
 </ul>
 <h3 id="websockets">websockets</h3>
 <ul>
-<li><strong>What it is:</strong> WebSocket connections for live
-transcription.</li>
+<li><strong>What it is:</strong> WebSocket connections: live
+transcription, and in QUILL, Scribe for Documents' document
+channel.</li>
 <li><strong>Included in:</strong> Every product in the family.</li>
 <li><strong>Version:</strong> 17.2</li>
 <li><strong>Licence:</strong> BSD-3-Clause</li>
@@ -2325,6 +2326,25 @@ Provide the complete corresponding source of the component, either
 alongside it or by a written offer valid for at least three years. Any
 program that is a derivative work must also be offered under
 GPL-2.0-compatible terms.</li>
+</ul>
+<h3 id="pagescan-pagescanexe">pagescan (pagescan.exe)</h3>
+<ul>
+<li><strong>What it is:</strong> Scans pages from flatbed and
+document-feeder scanners for File &gt; Import &gt; Scan Pages (Windows
+Image Acquisition on Windows, ImageCaptureCore on macOS). Run as a
+separate, unmodified program from tools\scanner beside QUILL. The
+licences of the Rust crates built into it are in the project's
+THIRD-PARTY-LICENSES.html.</li>
+<li><strong>Included in:</strong> QUILL for All.</li>
+<li><strong>Version:</strong> 0.1.0</li>
+<li><strong>Licence:</strong> MIT</li>
+<li><strong>Copyright:</strong> Copyright (c) 2026 Pneuma Solutions</li>
+<li><strong>Upstream:</strong> <a
+href="https://github.com/PneumaSolutions/pagescan">https://github.com/PneumaSolutions/pagescan</a></li>
+<li><strong>How it reaches you:</strong> Bundled: it is inside the
+installer or the portable zip.</li>
+<li><strong>What the licence asks of us:</strong> Keep the copyright
+notice and the permission notice with every copy.</li>
 </ul>
 <h2 id="audio-and-video">Audio and video</h2>
 <p>Separate programs and engines for playing, recording and converting
@@ -6439,7 +6459,8 @@ signal sounds (the VS Code Signals sound pack), Weather alert sound
 (quill/assets/audio/weather_alert.wav), Test and lint tools (pytest,
 ruff, mypy and their plugins), Node.js (node.exe), VS Code HTML, CSS,
 JSON and Markdown language servers (vscode-langservers-extracted),
-Pyright, Prettier, GitHub REST API description.</p>
+Pyright, Prettier, pagescan (pagescan.exe), GitHub REST API
+description.</p>
 <p>What it asks of us: Keep the copyright notice and the permission
 notice with every copy.</p>
 <pre class="text"><code>MIT License
