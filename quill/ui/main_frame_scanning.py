@@ -1,10 +1,10 @@
 """Scan pages from a scanner, anywhere in QUILL (MainFrame mixin).
 
-File > Scan Pages... scans one or more pages and then asks what to do with
+File > Import > Scan Pages... scans one or more pages and then asks what to do with
 them: read the text (QUILL's own OCR, the same route as Import / Convert
 Document), insert a page into the document as an image, or save them as a
-PDF or as pictures. File > Choose
-Scanner... picks which scanner QUILL uses.
+PDF or as pictures. Tools > Choose Scanner... picks which scanner QUILL
+uses.
 
 Every caller that wants pages goes through :meth:`ScanningMixin.start_scan`,
 which runs the shared logic in :mod:`quill.core.scanning`:
@@ -30,7 +30,7 @@ from typing import Any
 
 _TITLE = "Scan Pages"
 
-#: What File > Scan Pages offers once the pages are in, in order.
+#: What File > Import > Scan Pages offers once the pages are in, in order.
 USE_OCR = "ocr"
 USE_INSERT = "insert"
 USE_PDF = "pdf"
@@ -62,20 +62,31 @@ class ScanningMixin:
             host._binding_for("file.scan_choose_scanner"),
         )
 
-    def _append_scan_rows(self, file_menu: Any) -> None:
-        """File > Scan Pages... and Choose Scanner..., after Import."""
+    def _append_scan_rows(self, import_menu: Any) -> None:
+        """File > Import > Scan Pages..., right after Import / Convert Document.
+
+        In Import because a scan is a document arriving, and because the File
+        menu itself has more rows than letters. Choose Scanner is in Tools,
+        where there is room (``_append_choose_scanner_row``).
+        """
         from quill.core.i18n import _
 
         wx = self._wx
         host: Any = self
         self._id_scan_pages = wx.NewIdRef()
-        self._id_choose_scanner = wx.NewIdRef()
-        file_menu.Append(self._id_scan_pages, host._menu_label(_("S&can Pages..."), "file.scan"))
-        file_menu.Append(
-            self._id_choose_scanner,
-            host._menu_label(_("Choose Scanner..."), "file.scan_choose_scanner"),
-        )
+        label = host._menu_label(_("S&can Pages..."), "file.scan")
+        import_menu.Insert(1, self._id_scan_pages, label)
         host.frame.Bind(wx.EVT_MENU, lambda _e: self.scan_pages(), id=self._id_scan_pages)
+
+    def _append_choose_scanner_row(self, tools_menu: Any) -> None:
+        """Tools > Choose Scanner..., beside Scribe for Documents."""
+        from quill.core.i18n import _
+
+        wx = self._wx
+        host: Any = self
+        self._id_choose_scanner = wx.NewIdRef()
+        label = host._menu_label(_("Choose Scanne&r..."), "file.scan_choose_scanner")
+        tools_menu.Append(self._id_choose_scanner, label)
         host.frame.Bind(wx.EVT_MENU, lambda _e: self.choose_scanner(), id=self._id_choose_scanner)
 
     # ------------------------------------------------------------ commands
@@ -293,7 +304,7 @@ class ScanningMixin:
             return
         self._scan_say_problem(f"The scan did not work: {error}", parent)
 
-    # -------------------------------------------- File > Scan Pages's uses
+    # -------------------------------------------- File > Import > Scan Pages's uses
 
     def _scan_offer_uses(self, session: Any) -> None:
         """One question: what to do with the pages."""

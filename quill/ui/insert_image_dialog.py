@@ -182,7 +182,7 @@ class InsertImageDialog:
             self._btn_ai.Bind(wx.EVT_BUTTON, self._on_suggest_ai)
 
         if initial_path:
-            # A page just scanned (File > Scan Pages): the file is chosen, so
+            # A page just scanned (File > Import > Scan Pages): the file is chosen, so
             # the first thing to do is describe it.
             self._path_ctrl.SetValue(initial_path)
             self._alt_ctrl.SetFocus()

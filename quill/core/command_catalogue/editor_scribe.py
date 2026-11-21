@@ -228,6 +228,6 @@ SCRIBE_ROWS: tuple[CommandSpec, ...] = (
         risk=_S,
         kind=_D,
         group="File",
-        where="File, Scan Pages",
+        where="File, Import, Scan Pages",
     ),
 )

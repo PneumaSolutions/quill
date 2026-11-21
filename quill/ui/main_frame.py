@@ -691,7 +691,7 @@ class MainFrame(
     DocConvertMixin,
     ScribeDocumentsMixin,  # Tools > Scribe for Documents, Scribe PRD 8.1
     ScribeQueueMixin,  # the family queue, who speaks, and results, Scribe PRD 7.4
-    ScanningMixin,  # File > Scan Pages, shared by every caller that scans
+    ScanningMixin,  # File > Import > Scan Pages, shared by every caller that scans
     PdfOpenOcrMixin,
     DictationHotkeysMixin,
     # QUILL's own free AI: the shared hosted-AI commands, five, none implemented here.

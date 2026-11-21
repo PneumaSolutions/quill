@@ -1,6 +1,6 @@
 """Scanning's settings as QUILL's settings loader reads them (wx-free).
 
-Options > Scanning: the default scanner (chosen with File > Scan > Choose
+Options > Scanning: the default scanner (chosen with Tools > Choose
 Scanner, or the first time several are found), resolution, gray or color,
 and on Windows where the scanner tool lives. Cleaned here rather than inline
 in :meth:`quill.core.settings.Settings.from_dict` (GATE-11: that loader is at

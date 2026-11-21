@@ -110,6 +110,7 @@ class ScribeDocumentsMixin:
             if command_id in ("scribe.convert_link", "scribe.conversions", "scribe.account"):
                 menu.AppendSeparator()
         tools_menu.AppendSubMenu(menu, _("Scribe &for Documents"))
+        self._append_choose_scanner_row(tools_menu)  # type: ignore[attr-defined]
 
     def _append_scribe_file_rows(self, file_menu: Any, import_menu: Any, export_menu: Any) -> None:
         """File > My Scribe Documents, and the Import and Export rows."""

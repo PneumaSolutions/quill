@@ -250,15 +250,16 @@ scanning as a QUILL entry point (addendum to the Scribe PRD)</h1>
 only for Scribe. This is built and can be changed or removed without
 touching Scribe.</p>
 <h2 id="what-it-is">What it is</h2>
-<p><strong>File &gt; Scan Pages</strong> (QUILL key, then E with Shift)
-scans one or more pages from a flatbed or document-feeder scanner,
-asking “Scan another page?” after each, then offers what to do with
-them: read the text with QUILL’s own OCR (the Import / Convert Document
-route), insert the page into the document as a picture (Insert Image,
-with the alt text field focused), or save one PDF or the pictures.
-<strong>File &gt; Choose Scanner</strong> picks the scanner; with one,
-QUILL uses it silently. <strong>Options &gt; Scanning</strong> has the
-resolution, gray or color, and the Windows scanner tool’s location.</p>
+<p><strong>File &gt; Import &gt; Scan Pages</strong> (QUILL key, then E
+with Shift) scans one or more pages from a flatbed or document-feeder
+scanner, asking “Scan another page?” after each, then offers what to do
+with them: read the text with QUILL’s own OCR (the Import / Convert
+Document route), insert the page into the document as a picture (Insert
+Image, with the alt text field focused), or save one PDF or the
+pictures. <strong>Tools &gt; Choose Scanner</strong> picks the scanner;
+with one, QUILL uses it silently. <strong>Options &gt; Scanning</strong>
+has the resolution, gray or color, and the Windows scanner tool’s
+location.</p>
 <p>In the Scribe PRD’s terms it is a new entry point that feeds Import /
 Convert, and so the Scribe tier: a scanned PDF that QUILL’s OCR reads
 poorly gets the same Scribe offer as any other import.</p>
@@ -276,17 +277,17 @@ per command. Tested on a network HP LaserJet MFP.</li>
 <li><strong>macOS:</strong> ImageCaptureCore through PyObjC
 (<code>pyobjc-framework-ImageCaptureCore</code>, an optional,
 darwin-only dependency). Untested on real hardware.</li>
-<li><code>quill/ui/main_frame_scanning.py</code>: File &gt; Scan Pages
-and Choose Scanner, and <code>start_scan</code>, which any feature that
-wants pages can call.</li>
+<li><code>quill/ui/main_frame_scanning.py</code>: File &gt; Import &gt;
+Scan Pages and Choose Scanner, and <code>start_scan</code>, which any
+feature that wants pages can call.</li>
 </ul>
 <h2 id="questions-for-jeff">Questions for Jeff</h2>
 <ol type="1">
 <li>Should the Convert with Scribe for Documents dialog take scanned
 pages directly (a “Scan pages” source), or is the Import route
 enough?</li>
-<li>Should QUILL Lite get File &gt; Scan Pages too (rule 10: QUILL has
-it first)?</li>
+<li>Should QUILL Lite get File &gt; Import &gt; Scan Pages too (rule 10:
+QUILL has it first)?</li>
 <li>Is bundling <code>wia-scan.exe</code> in the installer’s
 <code>tools\scanner</code> folder the right place?</li>
 </ol>

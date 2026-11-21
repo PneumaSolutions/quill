@@ -1,6 +1,6 @@
 """Scanning, written once over :class:`~quill.core.scanning.base.ScannerBackend`.
 
-Every place in QUILL that scans -- File > Scan Pages, Insert Image, the
+Every place in QUILL that scans -- File > Import > Scan Pages, Insert Image, the
 Scribe for Documents wizard -- goes through this module:
 
 * :func:`backend_for_platform` picks the backend (``wia-scan`` on Windows,

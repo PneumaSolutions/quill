@@ -1388,9 +1388,9 @@ turns every Scribe command off.
 
 ### Scanning pages
 
-**File > Scan Pages** (QUILL key, then E with Shift) scans from a flatbed or
+**File > Import > Scan Pages** (QUILL key, then E with Shift) scans from a flatbed or
 document-feeder scanner. With one scanner QUILL uses it; with several it asks
-once and remembers (File > Choose Scanner changes it). After each page it asks
+once and remembers (Tools > Choose Scanner changes it). After each page it asks
 "Scan another page?". Then choose what to do with the pages: read the text
 with QUILL's own OCR, put the page into your document as a picture, or save a
 PDF or pictures. **Options > Scanning** sets the resolution (300 dots per inch

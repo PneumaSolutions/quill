@@ -25,7 +25,7 @@ SERVICE_GROUPS: tuple[SettingGroup, ...] = (
         "scanning",
         "Scanning",
         (
-            "Your scanner's resolution and color. File > Scan > Choose Scanner "
+            "Your scanner's resolution and color. Tools > Choose Scanner "
             "picks which scanner QUILL uses."
         ),
     ),
@@ -145,7 +145,7 @@ SERVICE_SPECS: tuple[SettingSpec, ...] = (
         "text",
         (
             "The scanner QUILL uses without asking. Leave blank to be asked when "
-            "more than one scanner is found. File > Scan > Choose Scanner sets it."
+            "more than one scanner is found. Tools > Choose Scanner sets it."
         ),
         feature_id="core.ocr",
         keywords=("scan", "scanner", "default", "device"),
