@@ -110,6 +110,12 @@ _OVERVIEW_PARAGRAPHS: tuple[str, ...] = (
     "captions, and dictation. Read Aloud plays immediately with the voices already "
     "on the computer; Piper and Kokoro models install through Manage Speech "
     "Models.",
+    # Jeff's Scribe PRD, SCR-POL-1: the About box says "Powered by Scribe for
+    # Documents". Spelled out rather than imported from quill.core.scribe so
+    # About never loads the Scribe client; a test pins it to POWERED_BY.
+    "Cloud document conversion under Tools > Scribe for Documents is Powered by "
+    "Scribe for Documents, from Pneuma Solutions (https://scribeit.io). It uses "
+    "your own Scribe account, only when you ask for it.",
 )
 
 
