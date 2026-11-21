@@ -176,7 +176,7 @@ class QueueRunner:
             if not self.client.store.signed_in():
                 return 0
             count = self.jobs.resume_signed_out()
-        except OSError:
+        except (OSError, q.QueueUnreadable):
             return 0
         if count:
             self.wake()
@@ -301,6 +301,11 @@ class QueueRunner:
                 self._send_settings(job)
             self._convert_all(job)
         except _JobCancelled:
+            return
+        except q.QueueUnreadable as exc:
+            # Nothing can be recorded on the job; it is tried again once the
+            # file can be read (the queue is never written over).
+            logger.warning("Scribe queue unreadable: %s", exc.code)
             return
         except ScribePasswordNeeded as exc:
             self._password_refused(job, exc)

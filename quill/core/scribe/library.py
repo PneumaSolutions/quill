@@ -119,13 +119,23 @@ class Library:
 
         return shared_folder() / LIBRARY_FILE
 
-    def _read(self) -> dict[str, Any]:
+    def _read(self, *, strict: bool = False) -> dict[str, Any]:
+        """The records. ``strict`` (for a write) raises :class:`OSError` for a
+        file that is there but unreadable, so it is never written over (Q11)."""
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError) as exc:
+            if strict:
+                raise OSError(f"{self.path.name} could not be read; left as it is") from exc
             return {}
         docs = data.get("documents") if isinstance(data, dict) else None
-        return docs if isinstance(docs, dict) else {}
+        if not isinstance(docs, dict):
+            if strict:
+                raise OSError(f"{self.path.name} is not a record QUILL understands")
+            return {}
+        return docs
 
     def record(self, document_id: str, title: str, files: list[str]) -> None:
         from quill.core.storage import write_json_atomic
@@ -134,7 +144,7 @@ class Library:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with guarded_write(self.path):
-            docs = self._read()
+            docs = self._read(strict=True)
             entry = docs.get(document_id) or {"title": title, "files": []}
             known = list(entry.get("files") or [])
             for item in files:

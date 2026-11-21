@@ -380,7 +380,11 @@ class ScribeDocumentsMixin:
                 )
             )
         batch = bool(getattr(settings, "scribe_batch_exception", False))
-        q.JobQueue().add(jobs, batch_allowed=batch)
+        try:
+            q.JobQueue().add(jobs, batch_allowed=batch)
+        except q.QueueUnreadable as exc:
+            self._announce(f"Nothing was sent. {exc.message}")
+            return
         for job in jobs:
             password = (
                 request.passwords.get(Path(job.source_path).name) if job.source_path else None

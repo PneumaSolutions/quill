@@ -185,9 +185,16 @@ class ScribeConversionsWindow:
         menu = self.wx.Menu()
         for label, action in self._commands(job):
             item = menu.Append(self.wx.ID_ANY, label)
-            self.frame.Bind(self.wx.EVT_MENU, lambda _e, run=action: run(), item)
+            self.frame.Bind(self.wx.EVT_MENU, lambda _e, run=action: self._run(run), item)
         self.frame.PopupMenu(menu)
         menu.Destroy()
+
+    def _run(self, action: Any) -> None:
+        """A job command; a queue file that cannot be read is said, not raised."""
+        try:
+            action()
+        except q.QueueUnreadable as exc:
+            self.host._announce(exc.message)
 
     def open_result(self) -> None:
         job = self.selected()
@@ -270,7 +277,7 @@ class ScribeConversionsWindow:
 
     def _on_list_key(self, event: Any) -> None:
         if event.GetKeyCode() == self.wx.WXK_DELETE:
-            self.remove()
+            self._run(self.remove)
             return
         event.Skip()
 

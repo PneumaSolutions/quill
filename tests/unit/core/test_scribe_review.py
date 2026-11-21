@@ -557,3 +557,77 @@ def test_q23_a_long_name_keeps_its_extension_and_fits_in_bytes() -> None:
     assert long.endswith(".docx") and len(long.encode()) <= 200
     arabic = safe_filename("تقرير " * 60 + ".pdf")
     assert arabic.endswith(".pdf") and len(arabic.encode()) <= 200
+
+
+# ------------------------------------------------------------------ Q11: an unreadable queue
+
+
+def test_q11_an_unreadable_queue_is_never_written_over(tmp_path) -> None:
+    jobs = q.JobQueue(tmp_path)
+    jobs.path.write_text('{"schema": 1, "jobs": [ {"id": "a", ', encoding="utf-8")  # damaged
+    before = jobs.path.read_bytes()
+    with pytest.raises(q.QueueUnreadable):
+        jobs.add([_job(tmp_path, "docx")])
+    with pytest.raises(q.QueueUnreadable):
+        jobs.update("a", lambda j: None)
+    with pytest.raises(q.QueueUnreadable):
+        jobs.remove("a")
+    assert jobs.path.read_bytes() == before
+    assert jobs.jobs() == [] and jobs.claim(1) is None  # readers see nothing, safely
+
+
+def test_q11_a_newer_queue_is_read_but_not_changed(tmp_path) -> None:
+    jobs = q.JobQueue(tmp_path)
+    jobs.path.write_text(
+        '{"schema": 2, "jobs": [{"id": "a", "title": "Notes.pdf", "formats": ["docx"]}]}',
+        encoding="utf-8",
+    )
+    assert [j.id for j in jobs.jobs()] == ["a"]
+    with pytest.raises(q.QueueUnreadable, match="newer QUILL"):
+        jobs.update("a", lambda j: setattr(j, "state", q.CANCELLED))
+
+
+def test_q11_unknown_fields_and_rows_survive_a_rewrite(tmp_path) -> None:
+    import json as _json
+
+    jobs = q.JobQueue(tmp_path)
+    jobs.path.write_text(
+        _json.dumps({
+            "schema": 1,
+            "jobs": [
+                {"id": "a", "title": "Notes.pdf", "formats": ["docx"], "future": {"x": 1}},
+                {"id": "b", "formats": 7},  # a row this version cannot read
+                "not even a row",
+            ],
+        }),
+        encoding="utf-8",
+    )
+    jobs.update("a", lambda j: setattr(j, "message", "hello"))
+    rows = _json.loads(jobs.path.read_text(encoding="utf-8"))["jobs"]
+    assert rows[0]["future"] == {"x": 1} and rows[0]["message"] == "hello"
+    assert rows[1] == {"id": "b", "formats": 7} and rows[2] == "not even a row"
+
+
+def test_q11_a_locked_queue_file_is_read_again_before_giving_up(tmp_path, monkeypatch) -> None:
+    jobs = q.JobQueue(tmp_path)
+    [job] = jobs.add([_job(tmp_path, "docx")])
+    real = Path.read_text
+    calls = {"n": 0}
+
+    def flaky(self, *a, **k):
+        if self == jobs.path and calls["n"] == 0:
+            calls["n"] += 1
+            raise PermissionError(13, "sharing violation")  # antivirus had it open
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(Path, "read_text", flaky)
+    assert jobs.update(job.id, lambda j: setattr(j, "message", "ok")).message == "ok"
+    assert len(jobs.jobs()) == 1
+
+
+def test_q11_an_unreadable_library_is_never_written_over(tmp_path) -> None:
+    library = Library(tmp_path)
+    library.path.write_text("{damaged", encoding="utf-8")
+    with pytest.raises(OSError):
+        library.record("doc", "Notes", ["x.docx"])
+    assert library.path.read_text(encoding="utf-8") == "{damaged"

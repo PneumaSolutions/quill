@@ -23,6 +23,13 @@ upload it again.
 
 Nothing secret is ever written here: no tokens, no passwords. A PDF password
 lives only in the memory of the app that is running the job.
+
+**A file it cannot read is never overwritten.** Only a missing file is an empty
+queue. A file that is locked by antivirus or a backup tool, damaged, or written
+by a newer QUILL (a higher ``schema``) makes every write refuse with
+:class:`QueueUnreadable` after a few quick retries, and fields or rows this
+version does not know are written back as they were (independent review Q11:
+one bad read used to erase every job).
 """
 
 from __future__ import annotations
@@ -37,7 +44,7 @@ from pathlib import Path
 from typing import Any
 
 from quill.core.file_lock import guarded_write
-from quill.core.scribe.model import format_label, in_build_order, labels_sentence
+from quill.core.scribe.model import ScribeError, format_label, in_build_order, labels_sentence
 
 QUEUE_FILE = "queue.json"
 RUNNER_LOCK_FILE = "runner.lock"
@@ -47,6 +54,8 @@ HEARTBEAT_S = 5.0
 #: How long a lock or claim write may wait for the queue's lock file.
 _CLAIM_WAIT_S = 1.0
 _SCHEMA = 1
+_READ_TRIES = 3
+_READ_RETRY_S = 0.05
 
 # Job states. "Waiting for you" states need the person; nothing pops up for them.
 WAITING = "waiting"
@@ -127,16 +136,20 @@ class Job:
     retry_at: float = 0.0  # not run again before this time (after an unexpected failure)
     busy_count: int = 0  # times Scribe asked to slow down (each wait is longer)
     saved: dict[str, str] = field(default_factory=dict)  # format -> file already saved
+    extra: dict[str, Any] = field(default_factory=dict, repr=False)  # a newer version's fields
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Job:
-        names = {f.name for f in fields(cls)}
+        names = {f.name for f in fields(cls)} - {"extra"}
         job = cls(**{k: v for k, v in data.items() if k in names})
+        job.extra = {k: v for k, v in data.items() if k not in names and k != "extra"}
         job.formats = in_build_order(job.formats)
         return job
 
     def to_json(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        extra = data.pop("extra", None) or {}
+        return {**extra, **data}
 
     @property
     def name(self) -> str:
@@ -173,6 +186,12 @@ class Job:
         return ". ".join(parts) + "."
 
 
+class QueueUnreadable(ScribeError):
+    """``queue.json`` is there but cannot be read: nothing is written over it."""
+
+    code = "QUILL-SCRIBE-QUEUE"
+
+
 class JobQueue:
     """The shared ``queue.json``. Every change is a locked read-modify-write."""
 
@@ -187,25 +206,61 @@ class JobQueue:
     def path(self) -> Path:
         return self.folder / QUEUE_FILE
 
-    def _read(self) -> list[Job]:
-        try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return []
-        rows = data.get("jobs", []) if isinstance(data, dict) else []
-        jobs: list[Job] = []
-        for row in rows:
-            if isinstance(row, dict):
-                try:
-                    jobs.append(Job.from_json(row))
-                except TypeError:
-                    continue
-        return jobs
+    def _load(self, *, strict: bool) -> list[Job | dict[str, Any]]:
+        """Every row: a :class:`Job`, or the raw row when this version cannot read it.
 
-    def _write(self, jobs: Iterable[Job]) -> None:
+        ``strict`` (for a write) raises :class:`QueueUnreadable` rather than
+        answering "empty" for a file that is there but unreadable or newer.
+        """
+        data: Any = None
+        for attempt in range(_READ_TRIES):
+            try:
+                data = json.loads(self.path.read_text(encoding="utf-8"))
+                break
+            except FileNotFoundError:
+                return []
+            except (OSError, ValueError):
+                if attempt + 1 < _READ_TRIES:
+                    time.sleep(_READ_RETRY_S)
+        else:
+            return self._unreadable(strict, "could not be read")
+        rows = data.get("jobs") if isinstance(data, dict) else None
+        if not isinstance(rows, list):
+            return self._unreadable(strict, "is not a queue QUILL understands")
+        schema = data.get("schema", _SCHEMA)
+        if strict and isinstance(schema, int) and schema > _SCHEMA:
+            raise QueueUnreadable(
+                "A newer QUILL wrote the Scribe for Documents queue. Use that version, "
+                "or update this one, to change it."
+            )
+        entries: list[Job | dict[str, Any]] = []
+        for row in rows:
+            try:
+                entries.append(Job.from_json(row) if isinstance(row, dict) else row)
+            except (TypeError, ValueError):
+                entries.append(row)  # kept, untouched, for the version that wrote it
+        return entries
+
+    def _unreadable(self, strict: bool, why: str) -> list[Job | dict[str, Any]]:
+        if strict:
+            raise QueueUnreadable(
+                f"The Scribe for Documents queue ({self.path}) {why}, so QUILL left it as "
+                "it is. Try again in a moment."
+            )
+        return []
+
+    def _read(self) -> list[Job]:
+        return [e for e in self._load(strict=False) if isinstance(e, Job)]
+
+    def _read_for_write(self) -> tuple[list[Job | dict[str, Any]], list[Job]]:
+        entries = self._load(strict=True)
+        return entries, [e for e in entries if isinstance(e, Job)]
+
+    def _write(self, entries: Iterable[Job | dict[str, Any]]) -> None:
         from quill.core.storage import write_json_atomic
 
-        write_json_atomic(self.path, {"schema": _SCHEMA, "jobs": [j.to_json() for j in jobs]})
+        rows = [e.to_json() if isinstance(e, Job) else e for e in entries]
+        write_json_atomic(self.path, {"schema": _SCHEMA, "jobs": rows})
 
     def jobs(self) -> list[Job]:
         return self._read()
@@ -224,7 +279,7 @@ class JobQueue:
         its own; the rest wait for Send Next File (PRD 7.4)."""
         self.folder.mkdir(parents=True, exist_ok=True)
         with guarded_write(self.path):
-            existing = self._read()
+            existing, _known = self._read_for_write()
             for index, job in enumerate(jobs):
                 job.formats = in_build_order(job.formats)
                 if not batch_allowed and index > 0:
@@ -235,7 +290,7 @@ class JobQueue:
 
     def update(self, job_id: str, change: Callable[[Job], None]) -> Job | None:
         with guarded_write(self.path):
-            jobs = self._read()
+            entries, jobs = self._read_for_write()
             found = None
             for job in jobs:
                 if job.id == job_id:
@@ -243,12 +298,13 @@ class JobQueue:
                     job.updated = time.time()
                     found = job
             if found is not None:
-                self._write(jobs)
+                self._write(entries)
         return found
 
     def remove(self, job_id: str) -> None:
         with guarded_write(self.path):
-            self._write([j for j in self._read() if j.id != job_id])
+            entries, _jobs = self._read_for_write()
+            self._write([e for e in entries if not (isinstance(e, Job) and e.id == job_id)])
 
     def next_runnable(self, *, pid: int = 0, now: float | None = None) -> Job | None:
         """The oldest job ready to run (a waiting one, or one an app left half done).
@@ -269,23 +325,23 @@ class JobQueue:
         try:
             with guarded_write(self.path, timeout_s=_CLAIM_WAIT_S, strict=True):
                 moment = time.time() if now is None else now
-                jobs = self._read()
+                entries, jobs = self._read_for_write()
                 candidates = [j for j in jobs if _runnable(j, pid, moment)]
                 if not candidates:
                     return None
                 job = min(candidates, key=lambda j: j.created)
                 job.runner_pid = pid
                 job.lease = moment + RUNNER_STALE_S
-                self._write(jobs)
+                self._write(entries)
                 return job
-        except TimeoutError:
+        except (TimeoutError, QueueUnreadable):
             return None
 
     def renew(self, job_id: str, pid: int) -> bool:
         """Extend ``pid``'s claim on a job. False when another app has it now."""
         try:
             with guarded_write(self.path, timeout_s=_CLAIM_WAIT_S, strict=True):
-                jobs = self._read()
+                entries, jobs = self._read_for_write()
                 job = next((j for j in jobs if j.id == job_id), None)
                 if job is None:
                     return True  # removed: the runner finds out on its next update
@@ -293,9 +349,9 @@ class JobQueue:
                     return False
                 job.runner_pid = pid
                 job.lease = time.time() + RUNNER_STALE_S
-                self._write(jobs)
+                self._write(entries)
                 return True
-        except TimeoutError:
+        except (TimeoutError, QueueUnreadable):
             return False
 
     def release(self, job_id: str, pid: int) -> None:
@@ -316,7 +372,7 @@ class JobQueue:
         """
         count = 0
         with guarded_write(self.path):
-            jobs = self._read()
+            entries, jobs = self._read_for_write()
             for job in jobs:
                 if job.state == NEEDS_SIGNIN:
                     job.state = WAITING
@@ -325,7 +381,7 @@ class JobQueue:
                     job.updated = time.time()
                     count += 1
             if count:
-                self._write(jobs)
+                self._write(entries)
         return count
 
     def waiting_count(self) -> int:
@@ -504,6 +560,7 @@ __all__ = [
     "WAITING_YOU",
     "Job",
     "JobQueue",
+    "QueueUnreadable",
     "RunnerLock",
     "finished_while_closed_sentence",
     "result_sentence",
