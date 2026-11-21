@@ -123,6 +123,10 @@ class Job:
     password_tries: int = 0
     runner_pid: int = 0  # the app running it now (0: nobody); see JobQueue.claim
     lease: float = 0.0  # runner_pid's claim lasts until this time
+    attempts: int = 0  # unexpected failures so far (the runner gives up after a few)
+    retry_at: float = 0.0  # not run again before this time (after an unexpected failure)
+    busy_count: int = 0  # times Scribe asked to slow down (each wait is longer)
+    saved: dict[str, str] = field(default_factory=dict)  # format -> file already saved
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Job:
@@ -304,12 +308,34 @@ class JobQueue:
 
         self.update(job_id, _drop)
 
+    def resume_signed_out(self) -> int:
+        """After a sign-in: every job paused for it waits to run again (PRD 11).
+
+        Returns how many were resumed. Independent review Q4: before this, a
+        job that needed sign-in stayed paused after the person signed in.
+        """
+        count = 0
+        with guarded_write(self.path):
+            jobs = self._read()
+            for job in jobs:
+                if job.state == NEEDS_SIGNIN:
+                    job.state = WAITING
+                    job.message = "Signed in again; carrying on."
+                    job.error_code = ""
+                    job.updated = time.time()
+                    count += 1
+            if count:
+                self._write(jobs)
+        return count
+
     def waiting_count(self) -> int:
         return sum(1 for j in self._read() if j.state not in FINISHED)
 
 
 def _runnable(job: Job, pid: int, now: float) -> bool:
     if job.state != WAITING and job.state not in ACTIVE:
+        return False
+    if job.retry_at > now:
         return False
     return not (job.runner_pid and job.runner_pid != pid and job.lease > now)
 
@@ -444,7 +470,9 @@ def labels_from_names(names: list[str]) -> str:
 def finished_while_closed_sentence(jobs: list[Job], app: str = "QUILL") -> str:
     """ "Scribe for Documents finished 2 documents while QUILL was closed: Notes and
     Chapter 2, in Documents\\Scribe for Documents." """
-    titles = [Path(j.name).stem for j in jobs]
+    from quill.core.scribe.library import title_stem
+
+    titles = [title_stem(j.name) for j in jobs]
     folders = {short_folder(str(Path(j.results[0]).parent.parent)) for j in jobs if j.results}
     where = f", in {folders.pop()}" if len(folders) == 1 else ""
     count = "1 document" if len(jobs) == 1 else f"{len(jobs)} documents"

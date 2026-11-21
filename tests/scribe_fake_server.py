@@ -509,6 +509,10 @@ def _start(
         elif step[0] == "error":
             push(topic, "error", {"reason": step[1], "message": step[2]})
             return
+        elif step[0] == "error_event":  # a whole payload, e.g. with a purchase_url
+            push(topic, "error", dict(step[1]))
+            if step[1].get("reason") != "conversion_in_progress":
+                return
         elif step[0] == "chunk":
             push(topic, "chunk", {"content": step[1]})
     doc.outputs[fmt] = "complete"

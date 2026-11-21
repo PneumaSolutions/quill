@@ -286,13 +286,11 @@ class DocumentChannel:
 
     def _as_event(self, frame: list[Any]) -> dict[str, Any] | None:
         _join, _ref, topic, name, payload = frame
-        if topic != self.topic or name in ("phx_reply", "phx_close"):
-            if name == "phx_error" and topic == self.topic:
-                raise ScribeOffline(
-                    "The Scribe for Documents channel closed.", server_code="offline"
-                )
+        if topic != self.topic or name == "phx_reply":
             return None
-        if name == "phx_error":
+        if name in ("phx_error", "phx_close"):
+            # The server left the channel: as good as a dropped connection, so
+            # the runner reconnects instead of waiting on a dead topic (Q6).
             raise ScribeOffline("The Scribe for Documents channel closed.", server_code="offline")
         event = {"type": str(name)}
         if isinstance(payload, dict):

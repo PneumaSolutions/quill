@@ -120,6 +120,8 @@ class DocumentList:
 
 #: Names Windows keeps for devices, with or without an extension ("CON.txt").
 _RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.I)
+#: A file name stays within this many UTF-8 bytes ("(2)" and ".part" need room).
+_NAME_BYTES = 200
 
 
 def safe_filename(name: str, fallback: str = "Scribe result") -> str:
@@ -129,8 +131,16 @@ def safe_filename(name: str, fallback: str = "Scribe result") -> str:
     leave the chosen folder (``../x``, ``C:\\x``, ``/etc/x``); a Windows
     device name gets a leading ``_`` (docs/design/scribe-security-review.md).
     """
+    from quill.core.scribe.library import cut_to_bytes
+
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", name).strip(" .")
-    cleaned = re.sub(r"\s+", " ", cleaned)[:150].strip(" .")
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    # Cut the stem, never the extension, and by bytes, so a long title keeps
+    # ".docx" and a long Arabic or CJK one fits the file system (Q23).
+    match = re.match(r"^(.*?)(\.[A-Za-z0-9]{1,8})$", cleaned)
+    stem, extension = (match.group(1), match.group(2)) if match else (cleaned, "")
+    stem = cut_to_bytes(stem, _NAME_BYTES - len(extension)).strip(" .")
+    cleaned = f"{stem}{extension}" if stem else ""
     if _RESERVED.match(cleaned):
         cleaned = f"_{cleaned}"
     return cleaned or fallback

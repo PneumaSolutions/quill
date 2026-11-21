@@ -22,6 +22,16 @@ speak or not (its settings decide; start, result and error always speak).
 
 A job that needs the person never opens a dialog: it moves to a "needs"
 state and says so once.
+
+Failures are bounded (independent review, 2026-11-21). An unexpected error
+(not one of Scribe's coded answers) is retried a few times, each after a
+longer wait set on the job (``retry_at``), and then the job is marked "did not
+finish" with Retry; jobs behind it run meanwhile. A format already saved is
+never fetched again (``Job.saved``). ``rate_limited`` -- as a REST answer or a
+channel ``error`` event -- waits longer each time it comes and is said once a
+job. After a reconnect, and every :data:`POLL_S` while waiting, the outputs are
+read over REST, so a conversion that finished while QUILL was not listening is
+downloaded rather than waited for.
 """
 
 from __future__ import annotations
@@ -34,12 +44,13 @@ from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from quill.core.scribe import queue as q
 from quill.core.scribe.auth import TokenStore
 from quill.core.scribe.channel import DocumentChannel
 from quill.core.scribe.client import ScribeClient
-from quill.core.scribe.library import Library, unpack
+from quill.core.scribe.library import Library, title_stem, unpack
 from quill.core.scribe.model import (
     DocumentSettings,
     ScribeBusy,
@@ -51,6 +62,7 @@ from quill.core.scribe.model import (
     ScribePasswordNeeded,
     ScribeSaveFailed,
     ScribeSignInRequired,
+    error_for,
     format_label,
     plain,
 )
@@ -61,7 +73,12 @@ SayFn = Callable[[str, str, "q.Job"], None]
 ChangeFn = Callable[["q.Job"], None]
 IDLE_S = 1.0
 OFFLINE_SPEAK_AFTER_S = 5.0
-SLOW_DOWN_S = 60.0
+SLOW_DOWN_S = 60.0  # the first wait when Scribe asks to slow down; it doubles
+SLOW_DOWN_MAX_S = 600.0
+MAX_SLOW_DOWNS = 6  # then the job ends with Retry
+RETRY_DELAYS_S = (10.0, 60.0, 300.0)  # after an unexpected failure; then it ends
+POLL_S = 30.0  # read the outputs over REST this often while waiting (PRD 3.5)
+SIGNIN_CHECK_S = 10.0
 MAX_RECONNECTS = 8
 MILESTONES = (25, 50, 75)
 PASSWORD_TRIES = 3
@@ -98,7 +115,9 @@ class QueueRunner:
         on_say: SayFn | None = None,
         on_change: ChangeFn | None = None,
         on_result: ChangeFn | None = None,
-        sleep: Callable[[float], None] = time.sleep,
+        sleep: Callable[[float], None] | None = None,
+        clock: Callable[[], float] = time.monotonic,
+        now: Callable[[], float] = time.time,
     ) -> None:
         self.app = app
         self.jobs = jobs or q.JobQueue()
@@ -112,19 +131,25 @@ class QueueRunner:
         self._say = on_say or (lambda kind, text, job: None)
         self._changed = on_change or (lambda job: None)
         self._result = on_result or (lambda job: None)
-        self._sleep = sleep
-        self._passwords: dict[str, str] = {}
         self._stop = threading.Event()
+        # Waits end early when the app closes, so it hands the lock on at once.
+        self._sleep = sleep or self._stop.wait
+        self._clock = clock
+        self._now = now
+        self._passwords: dict[str, str] = {}
         self._wake = threading.Event()
         self._thread: threading.Thread | None = None
         self._milestones: dict[str, set[int]] = {}
         self._stages_said: dict[str, set[str]] = {}
         self._resumed_done: list[q.Job] = []
         self._lost = threading.Event()
+        self._slowed_said: set[str] = set()
+        self._next_signin_check = 0.0
 
     # ------------------------------------------------------------ lifecycle
 
     def start(self) -> None:
+        self.resume_after_sign_in()
         if self._thread is None:
             self._thread = threading.Thread(
                 target=self._loop, name="quill-scribe-queue", daemon=True
@@ -145,6 +170,18 @@ class QueueRunner:
     def wake(self) -> None:
         self._wake.set()
 
+    def resume_after_sign_in(self) -> int:
+        """Jobs paused for sign-in run again once there is a sign-in (PRD 11)."""
+        try:
+            if not self.client.store.signed_in():
+                return 0
+            count = self.jobs.resume_signed_out()
+        except OSError:
+            return 0
+        if count:
+            self.wake()
+        return count
+
     def give_password(self, job_id: str, password: str) -> None:
         """Enter Password...: in memory when this app runs the queue.
 
@@ -158,7 +195,9 @@ class QueueRunner:
             hand_over_password(self.client.store, job_id, password)
         else:
             self._passwords[job_id] = password
-        self.jobs.update(job_id, lambda j: _set_state(j, q.WAITING, "Sending with the password."))
+        # Only a job waiting for its password goes on: a later file of a batch
+        # still waits for Send Next File (SCR-POL-3; independent review Q9).
+        self.jobs.update(job_id, _password_given)
         self.wake()
 
     def _password(self, job_id: str) -> str | None:
@@ -176,12 +215,18 @@ class QueueRunner:
     # ------------------------------------------------------------ the loop
 
     def _loop(self) -> None:
+        failures = 0
         while not self._stop.is_set():
             try:
                 worked = self.run_once()
-            except Exception:  # noqa: BLE001 - the loop must outlive any one job
-                logger.exception("Scribe queue runner step failed")
-                worked = False
+                failures = 0
+            except Exception as exc:  # noqa: BLE001 - the loop must outlive any one job
+                # Never a tight loop: each failure in a row waits longer.
+                failures += 1
+                logger.warning("Scribe queue runner step failed: %s", type(exc).__name__)
+                self._wake.wait(min(60.0, IDLE_S * 2**failures))
+                self._wake.clear()
+                continue
             if not worked:
                 self._wake.wait(IDLE_S)
                 self._wake.clear()
@@ -189,13 +234,14 @@ class QueueRunner:
     def run_once(self) -> bool:
         """Run the next job if this app may. True when a job was worked on."""
         pid = self.lock.pid
-        if self.jobs.next_runnable(pid=pid) is None:
+        if self.jobs.next_runnable(pid=pid, now=self._now()) is None:
             if self.lock.held_here():
                 self.lock.beat()
+            self._maybe_resume_after_sign_in()
             return False
         if not self.lock.acquire():
             return False
-        job = self.jobs.claim(pid)
+        job = self.jobs.claim(pid, now=self._now())
         if job is None:
             return False
         if job.owner_pid != pid and not job.resumed:
@@ -214,6 +260,14 @@ class QueueRunner:
             if not self._lost.is_set():
                 self.jobs.release(job.id, pid)
         return True
+
+    def _maybe_resume_after_sign_in(self) -> None:
+        """Another app may have signed in: look now and then while jobs wait for it."""
+        if self._clock() < self._next_signin_check:
+            return
+        self._next_signin_check = self._clock() + SIGNIN_CHECK_S
+        if any(j.state == q.NEEDS_SIGNIN for j in self.jobs.jobs()):
+            self.resume_after_sign_in()
 
     def _heartbeat(self, job_id: str, done: threading.Event) -> None:
         """Keep the runner lock and this job's claim alive while the job runs."""
@@ -259,8 +313,11 @@ class QueueRunner:
                 "until you sign in again.",
             )
         except ScribeNeedsPages as exc:
-            url = str(exc.extra.get("purchase_url") or self.client.purchase_url())
-            self._update(job, lambda j: setattr(j, "purchase_url", url))
+            url = self._purchase_url(exc.extra.get("purchase_url"))
+            try:
+                self._update(job, lambda j: setattr(j, "purchase_url", url))
+            except _JobCancelled:
+                return
             self._needs(
                 job,
                 q.NEEDS_PAGES,
@@ -276,6 +333,64 @@ class QueueRunner:
             if isinstance(exc, ScribeSaveFailed):
                 sentence = f"{exc.message} The result stays in your Scribe account."
             self._finish_badly(job, q.FAILED, exc, sentence)
+        except Exception as exc:  # noqa: BLE001 - bounded below, never a tight loop
+            self._unexpected(job, exc)
+
+    def _unexpected(self, job: q.Job, exc: BaseException) -> None:
+        """Not one of Scribe's coded answers: try again later, a few times, then stop.
+
+        Independent review Q3: such an error left the job active, so the loop
+        took it again a second later, forever, saving a new copy each time.
+        """
+        logger.warning("Scribe job step failed: %s", type(exc).__name__)
+        fresh = self.jobs.get(job.id)
+        if fresh is None or fresh.state == q.CANCELLED:
+            return
+        tries = fresh.attempts + 1
+        if tries > len(RETRY_DELAYS_S):
+            reason = (
+                plain(exc)
+                if isinstance(exc, ScribeError)
+                else (f"something went wrong on this computer ({type(exc).__name__})")
+            )
+            failure = ScribeError(reason)
+
+            def _give_up(j: q.Job) -> None:
+                j.attempts = 0
+                j.retry_at = 0.0
+
+            self.jobs.update(job.id, _give_up)
+            self._finish_badly(
+                job,
+                q.FAILED,
+                failure,
+                f"Scribe for Documents could not convert {job.name}: {reason}.",
+            )
+            return
+        delay = RETRY_DELAYS_S[tries - 1]
+        when = self._now() + delay
+
+        def _later(j: q.Job) -> None:
+            j.attempts = tries
+            j.retry_at = when
+            j.message = f"Something went wrong; {self.app} tries again in {_duration(delay)}."
+
+        try:
+            self._update(job, _later)
+        except _JobCancelled:
+            pass
+
+    def _purchase_url(self, offered: Any) -> str:
+        """The server's purchase link, only when it is Scribe's own https page (Q27)."""
+        url = str(offered or "")
+        parts = urlsplit(url)
+        own = urlsplit(self.client.purchase_url()).hostname or ""
+        host = parts.hostname or ""
+        if parts.scheme == "https" and (
+            host == own or host.endswith(".scribeit.io") or host == "scribeit.io"
+        ):
+            return url
+        return self.client.purchase_url()
 
     def _reload(self, job: q.Job) -> q.Job:
         fresh = self.jobs.get(job.id)
@@ -297,10 +412,15 @@ class QueueRunner:
         self._update(job, lambda j: _set_state(j, q.UPLOADING, f"Sending {j.name}."))
         self._say("start", f"Scribe for Documents is converting {job.name}.", job)
         password = self._password(job.id)
-        if job.source_url:
-            document_id = self.client.create_from_url(job.source_url, password)
-        else:
-            document_id = self.client.create_from_file(Path(job.source_path), password)
+        while True:
+            try:
+                if job.source_url:
+                    document_id = self.client.create_from_url(job.source_url, password)
+                else:
+                    document_id = self.client.create_from_file(Path(job.source_path), password)
+                break
+            except ScribeBusy:
+                job = self._slow_down(job, then=q.UPLOADING)
         self._check_owner(job)
         self._update(job, lambda j: setattr(j, "document_id", document_id))
 
@@ -341,6 +461,7 @@ class QueueRunner:
                 self._update(job, partial(_set_fields, message=lost))
                 self._sleep(min(30.0, 2.0**attempts))
                 job = self._reload(job)
+                self._check_owner(job)
                 job = self._collect_finished_while_away(job)
             except ScribeBusy:
                 job = self._slow_down(job)
@@ -352,29 +473,45 @@ class QueueRunner:
             outputs, _locked = self.client.outputs(job.document_id)
         except ScribeOffline:
             return job
+        wires = {_wire(f): f for f in job.remaining}
         for output in outputs:
-            if output.complete and output.format in job.remaining:
-                job = self._download(job, output.format)
+            if output.complete and output.format in wires:
+                job = self._download(job, wires[output.format])
         return job
 
-    def _slow_down(self, job: q.Job) -> q.Job:
-        if job.state != q.SLOWED:
+    def _slow_down(self, job: q.Job, *, then: str = q.CONVERTING) -> q.Job:
+        """``rate_limited``: said once a job; each wait doubles, up to ten minutes (PRD 11)."""
+        if job.id not in self._slowed_said:
+            self._slowed_said.add(job.id)
             self._say("error", f"Scribe for Documents asked {self.app} to slow down.", job)
-        job = self._update(
-            job, lambda j: _set_state(j, q.SLOWED, "Waiting a minute, as Scribe asked.")
-        )
-        self._sleep(SLOW_DOWN_S)
-        return self._update(self._reload(job), lambda j: _set_state(j, q.CONVERTING, ""))
+        count = job.busy_count + 1
+        if count > MAX_SLOW_DOWNS:
+            raise ScribeError(
+                "Scribe for Documents kept asking to slow down. Try again later.",
+                server_code="rate_limited",
+            )
+        delay = min(SLOW_DOWN_MAX_S, SLOW_DOWN_S * 2 ** (count - 1))
+
+        def _waiting(j: q.Job) -> None:
+            j.busy_count = count
+            _set_state(j, q.SLOWED, f"Waiting {_duration(delay)}, as Scribe asked.")
+
+        job = self._update(job, _waiting)
+        self._sleep(delay)
+        job = self._reload(job)
+        self._check_owner(job)
+        return self._update(job, lambda j: _set_state(j, then, ""))
 
     def _one_format(self, channel: DocumentChannel, job: q.Job, format_id: str) -> q.Job:
         # The API does not hand out the html output itself; "Accessible HTML"
         # comes as the offline web page (the same document with its pictures).
-        wire = "offline_html" if format_id == "html" else format_id
+        wire = _wire(format_id)
         job = self._update(job, lambda j: _set_fields(j, current_format=format_id, stage=""))
+        if format_id in job.saved and Path(job.saved[format_id]).exists():
+            return self._download(job, format_id)  # saved before a failure: no conversion
         # A format made before costs nothing and needs no conversion: Scribe
         # would only answer with its id and send nothing more.
-        outputs, _locked = self.client.outputs(job.document_id)
-        if any(o.format == wire and o.complete for o in outputs):
+        if self._is_complete(job, wire):
             return self._download(job, format_id)
         password = self._password(job.id)
         while True:
@@ -387,15 +524,44 @@ class QueueRunner:
                     raise
                 # Queued: wait for the conversion already running (never an error).
                 self._follow(channel, job, None)
+                # It may have been this format, finished while QUILL was away:
+                # then Scribe answers the next start with its id and nothing
+                # more, so ask over REST first (independent review Q6).
+                if self._is_complete(job, wire):
+                    return self._download(job, format_id)
         self._follow(channel, job, wire)
         return self._download(job, format_id)
 
+    def _is_complete(self, job: q.Job, wire: str) -> bool:
+        outputs, _locked = self.client.outputs(job.document_id)
+        return any(o.format == wire and o.complete for o in outputs)
+
+    def _finished_meanwhile(self, job: q.Job, format_id: str | None) -> bool:
+        """The polling fallback: has the format finished (or, for None, is nothing running)?"""
+        try:
+            outputs, _locked = self.client.outputs(job.document_id)
+        except ScribeOffline:
+            return False
+        if format_id is not None:
+            return any(o.format == format_id and o.complete for o in outputs)
+        running = [o for o in outputs if not o.is_preview and o.stage not in ("", "complete")]
+        return not running
+
     def _follow(self, channel: DocumentChannel, job: q.Job, format_id: str | None) -> q.Job:
-        """Read events until ``format_id`` completes (or any format, when None)."""
+        """Read events until ``format_id`` completes (or any format, when None).
+
+        Every :data:`POLL_S` without the event, the outputs are read over REST:
+        a channel that went quiet never leaves the job waiting for good.
+        """
+        next_poll = self._clock() + POLL_S
         while True:
             job = self._reload(job)
             event = channel.next_event(timeout=5.0)
             if event is None:
+                if self._clock() >= next_poll:
+                    next_poll = self._clock() + POLL_S
+                    if self._finished_meanwhile(job, format_id):
+                        return job
                 continue
             kind = event.get("type")
             event_format = str(event.get("format") or "")
@@ -416,11 +582,21 @@ class QueueRunner:
                     raise ScribePasswordNeeded(
                         message or "Password not accepted.", server_code=reason, wrong=True
                     )
-                raise ScribeError(message or reason or "unknown error", server_code=reason)
+                if reason == "conversion_in_progress":
+                    continue  # queued behind another format: keep waiting (PRD 11)
+                # needs_purchase (with its link), rate_limited, not_found... become
+                # the same coded errors as a reply would (independent review Q7).
+                extra: dict[str, Any] = {}
+                if event.get("purchase_url"):
+                    extra["purchase_url"] = str(event["purchase_url"])
+                raise error_for(reason, message or reason.replace("_", " "), **extra)
 
     def _on_status(self, job: q.Job, event: dict[str, Any]) -> q.Job:
         stage = str(event.get("stage") or "")
-        progress = float(event.get("progress") or 0.0)
+        try:
+            progress = float(event.get("progress") or 0.0)
+        except (TypeError, ValueError):
+            progress = 0.0
         total = max(1, len(job.formats))
         overall = round((len(job.done_formats) + max(0.0, min(1.0, progress))) / total * 100)
         changed = stage != job.stage
@@ -453,11 +629,15 @@ class QueueRunner:
             job, lambda j: _set_state(j, q.DOWNLOADING, f"Downloading {format_label(format_id)}.")
         )
         folder = Path(job.folder)
-        stem = Path(job.title or job.name).stem
+        stem = title_stem(job.title or job.name)
         twin = {"html": "offline_html", "offline_html": "html"}.get(format_id, "")
         if twin and twin in job.done_formats:
             # Both come from the one offline_html download: never fetch it twice.
             return self._update(job, partial(_mark_done, format_id=format_id, path=""))
+        already = job.saved.get(format_id, "")
+        if already and Path(already).exists():
+            # Saved before something else failed: never a second copy (Q3).
+            return self._update(job, partial(_mark_done, format_id=format_id, path=already))
         if format_id == "html":
             # The API does not hand out the html output itself; the offline web
             # page is the same document with its pictures, as a zip.
@@ -469,13 +649,19 @@ class QueueRunner:
             path = self.client.download(
                 job.document_id, format_id, folder, fallback_stem=stem, part_key=job.id
             )
-        self.library.record(job.document_id, job.title or job.name, [str(path)])
-        return self._update(job, partial(_mark_done, format_id=format_id, path=str(path)))
+        saved = str(path)
+        job = self._update(job, lambda j: j.saved.__setitem__(format_id, saved))
+        try:
+            self.library.record(job.document_id, job.title or job.name, [saved])
+        except OSError as exc:  # the local record is a convenience; the file is saved
+            logger.warning("Scribe library record not written: %s", type(exc).__name__)
+        return self._update(job, partial(_mark_done, format_id=format_id, path=saved))
 
     def _done(self, job: q.Job) -> None:
         job = self._update(job, lambda j: _set_fields(j, state=q.DONE, percent=100, message=""))
         self._forget_password(job.id)
         self._stages_said.pop(job.id, None)
+        self._slowed_said.discard(job.id)
         self._result(job)
 
     def _password_refused(self, job: q.Job, exc: ScribePasswordNeeded) -> None:
@@ -530,6 +716,22 @@ class QueueRunner:
         self._forget_password(job.id)
         self._stages_said.pop(job.id, None)
         self._say("error", sentence, job)
+
+
+def _wire(format_id: str) -> str:
+    return "offline_html" if format_id == "html" else format_id
+
+
+def _duration(seconds: float) -> str:
+    if seconds < 60:
+        return f"{round(seconds)} seconds"
+    minutes = round(seconds / 60)
+    return "a minute" if minutes == 1 else f"{minutes} minutes"
+
+
+def _password_given(job: q.Job) -> None:
+    if job.state == q.NEEDS_PASSWORD:
+        _set_state(job, q.WAITING, "Sending with the password.")
 
 
 def _set_state(job: q.Job, state: str, message: str) -> None:

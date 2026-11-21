@@ -71,6 +71,10 @@ class _Runner:
     def wake(self) -> None:
         self.woken += 1
 
+    def resume_after_sign_in(self) -> int:
+        self.resumed = getattr(self, "resumed", 0) + 1
+        return 0
+
     def give_password(self, job_id: str, password: str) -> None:
         self.passwords[job_id] = password
 
@@ -287,6 +291,7 @@ def test_the_first_command_signs_in_then_carries_on(scribe, monkeypatch, pdf) ->
     _convert(host, describe_source(pdf))
     assert signed == [True]
     assert len(q.JobQueue().jobs()) == 1  # Continue carried on into the command
+    assert host._scribe_runner.resumed == 1  # jobs paused for sign-in carry on (Q4)
 
 
 def test_this_document_unsaved_goes_as_a_word_copy(scribe) -> None:

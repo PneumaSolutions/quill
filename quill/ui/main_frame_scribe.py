@@ -244,7 +244,8 @@ class ScribeDocumentsMixin:
 
         done = sign_in(self, app=APP_NAME)
         if done:
-            self.scribe_queue_wake()  # type: ignore[attr-defined]
+            # Jobs paused for the sign-in carry on (PRD 11; independent review Q4).
+            self.scribe_resume_after_sign_in()  # type: ignore[attr-defined]
             if then is not None:
                 then()
         return done

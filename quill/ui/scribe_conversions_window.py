@@ -171,7 +171,7 @@ class ScribeConversionsWindow:
             items.append(("&Buy Pages", self.buy_pages))
         if job.state not in q.FINISHED:
             items.append(("&Cancel Waiting", self.cancel_waiting))
-        if job.state in (q.FAILED, q.CANCELLED, q.NEEDS_PAGES):
+        if job.state in (q.FAILED, q.CANCELLED, q.NEEDS_PAGES, q.NEEDS_SIGNIN):
             items.append(("&Retry", self.retry))
         if job.document_id:
             items.append(("Ask for &Human Review...", self.human_review))
@@ -307,6 +307,9 @@ def _reset_for_retry(job: q.Job) -> None:
     job.message = "Trying again."
     job.error_code = ""
     job.password_tries = 0
+    job.attempts = 0
+    job.retry_at = 0.0
+    job.busy_count = 0
 
 
 def open_path(path: Path) -> bool:

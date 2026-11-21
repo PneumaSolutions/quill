@@ -69,6 +69,11 @@ class ScribeQueueMixin:
     def scribe_queue_wake(self) -> None:
         self._scribe_ensure_runner().wake()
 
+    def scribe_resume_after_sign_in(self) -> None:
+        runner = self._scribe_ensure_runner()
+        runner.resume_after_sign_in()
+        runner.wake()
+
     def scribe_give_password(self, job_id: str, password: str) -> None:
         self._scribe_ensure_runner().give_password(job_id, password)
 
