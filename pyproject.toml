@@ -136,12 +136,9 @@ spellcheck = ["pyenchant>=3.3.0"]
 # includes, since the imports are lazy and the tracer misses them) — nothing
 # for end users to install. This extra covers source/pip installs on a Mac.
 # The code path still degrades to converted rich if the bridge is ever absent.
-# pyobjc-framework-ImageCaptureCore: scanning on a Mac (quill/core/scanning/
-# imagecapture.py, imported lazily; without it Scan says so in a sentence).
-mac = [
-    "pyobjc-framework-Cocoa>=12.2.2; sys_platform == 'darwin'",
-    "pyobjc-framework-ImageCaptureCore>=12.2.2; sys_platform == 'darwin'",
-]
+# Scanning on a Mac needs no Python package: it runs the bundled pagescan
+# tool (quill/core/scanning/pagescan_cli.py), the same as on Windows.
+mac = ["pyobjc-framework-Cocoa>=12.2.2; sys_platform == 'darwin'"]
 # Cross-platform earcon audio via BASS (Un4seen). Enables true mixing so multiple
 # sounds can play simultaneously. Falls back to winsound (Windows) or silence without
 # this extra. Used under Un4seen's free non-commercial licence (free family, no commercial use).
