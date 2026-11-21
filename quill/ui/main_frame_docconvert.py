@@ -27,6 +27,7 @@ Wiring expectations from MainFrame: ``_wx``, ``frame``, ``_task_manager``,
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from quill.core.docconvert_services import SERVICES_OVERVIEW_MARKDOWN
 from quill.core.document import Document
@@ -186,12 +187,24 @@ class DocConvertMixin:
         return datalab_configured(self.settings)
 
     def _docconvert_offer_cloud(self, source: Path) -> None:
-        """PRD §11.4 Tier 2 -> 3 escalation — the only prompt that mentions
-        cost or upload, shown only when the cloud service is configured.
-        Scribe for Documents is offered first (Scribe PRD 8.1.1)."""
-        if self._docconvert_offer_scribe(source):
+        """PRD §11.4 Tier 2 -> 3 escalation -- the only prompt that mentions
+        cost or upload. Scribe for Documents (Scribe PRD 8.1.1) and Datalab
+        cloud OCR are each offered when available; with both, one question
+        offers both, so a person who set up Datalab still has it (independent
+        review Q12: the Scribe question used to replace Datalab's for everyone)."""
+        scribe = self._docconvert_scribe_source(source)
+        datalab = self._docconvert_cloud_available()
+        if scribe is not None and datalab:
+            picked = self._docconvert_ask_which_cloud(source, scribe)
+            if picked == "scribe":
+                self._scribe_convert([scribe], formats="docx", purpose="import")  # type: ignore[attr-defined]
+            elif picked == "datalab":
+                self._docconvert_run_cloud(source)
             return
-        if not self._docconvert_cloud_available():
+        if scribe is not None:
+            self._docconvert_offer_scribe(source, scribe)
+            return
+        if not datalab:
             return
         wx = self._wx
         choice = self._show_message_box(
@@ -208,32 +221,68 @@ class DocConvertMixin:
         if choice == wx.YES:
             self._docconvert_run_cloud(source)
 
-    def _docconvert_offer_scribe(self, source: Path) -> bool:
-        """The Scribe tier after the free ones produced little. True when asked."""
+    def _docconvert_scribe_source(self, source: Path) -> Any:
+        """The file as a Scribe source when Scribe may be offered for it, else None."""
         from quill.core.scribe.auth import check_allowed
         from quill.core.scribe.consent import can_convert, describe_source
         from quill.core.scribe.model import ScribeError
 
         if not hasattr(self, "_scribe_convert") or not can_convert(source):
-            return False
+            return None
         try:
             check_allowed()
         except ScribeError:
-            return False
+            return None
+        return describe_source(source)
+
+    @staticmethod
+    def _docconvert_scribe_pages(info: Any) -> str:
+        return f"about {info.pages} pages" if info.pages else "about one page per page"
+
+    def _docconvert_ask_which_cloud(self, source: Path, info: Any) -> str:
+        """Both services: one question. ``"scribe"``, ``"datalab"`` or ``""`` (keep)."""
+        from quill.ui.dialog_contract import apply_modal_ids
+
         wx = self._wx
-        info = describe_source(source)
-        pages = f"about {info.pages} pages" if info.pages else "about one page per page"
+        title = "Convert with a Cloud Service?"
+        choices = [
+            "Convert with Scribe for Documents (rebuilds headings, tables and picture "
+            f"descriptions; uses {self._docconvert_scribe_pages(info)} of your Scribe "
+            "credit; opens as a new tab)",
+            "Convert with Datalab cloud OCR (uploads the file; may cost money)",
+            "Keep the local result",
+        ]
+        dialog = wx.SingleChoiceDialog(
+            self.frame,
+            f"The free conversion of {source.name} found little readable text, or the "
+            "layout is complex. A cloud service may do better. Each uploads the file.",
+            title,
+            choices,
+        )
+        apply_modal_ids(dialog, affirmative_id=wx.ID_OK, escape_id=wx.ID_CANCEL)
+        try:
+            dialog.SetSelection(0)
+            if self._show_modal_dialog(dialog, title) != wx.ID_OK:
+                return ""
+            picked = int(dialog.GetSelection())
+        finally:
+            dialog.Destroy()
+        return {0: "scribe", 1: "datalab"}.get(picked, "")
+
+    def _docconvert_offer_scribe(self, source: Path, info: Any) -> None:
+        """The Scribe tier after the free ones produced little, when it is the only one."""
+        wx = self._wx
         choice = self._show_message_box(
             f"The free conversion of {source.name} found little readable text, or the "
             "layout is complex. Convert it with Scribe for Documents? It rebuilds "
-            f"headings, tables and picture descriptions, uses {pages} of your Scribe "
+            f"headings, tables and picture descriptions, uses "
+            f"{self._docconvert_scribe_pages(info)} of your Scribe "
             "credit, and opens as a new tab.\n\nYes: choose and send.  No: keep this result.",
             "Convert with Scribe for Documents?",
             wx.ICON_QUESTION | wx.YES_NO,
         )
         if choice == wx.YES:
             self._scribe_convert([info], formats="docx", purpose="import")  # type: ignore[attr-defined]
-        return True
 
     def _docconvert_run_cloud(self, source: Path) -> None:
         """Consent-gated Tier 3: never uploads without the §15.1 dialog."""

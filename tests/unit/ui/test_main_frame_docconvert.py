@@ -32,6 +32,7 @@ class _FakeWx(SimpleNamespace):
     CANCEL = 5101
     ICON_ERROR = 512
     ICON_INFORMATION = 2048
+    ICON_QUESTION = 1024
     ICON_WARNING = 256
     OK = 4
     YES_NO = 10
@@ -365,3 +366,84 @@ def test_without_tesseract_windows_ocr_reads_the_scan_with_no_download(monkeypat
     ]
     host.review_last_ocr_result()
     assert "Windows OCR" in host.tabs[-1][1]
+
+
+# ------------------------------------------------- Scribe and Datalab (Scribe review Q12)
+
+
+class _ChoiceDialog:
+    """Stands in for wx.SingleChoiceDialog; answers ``pick`` (None: Cancel)."""
+
+    pick: int | None = 0
+    last: _ChoiceDialog | None = None
+
+    def __init__(self, _parent, message, title, choices) -> None:
+        self.message, self.title, self.choices = message, title, list(choices)
+        self.selection = 0
+        _ChoiceDialog.last = self
+
+    def SetSelection(self, index):  # noqa: N802
+        self.selection = index
+
+    def GetSelection(self):  # noqa: N802
+        return self.pick if self.pick is not None else self.selection
+
+    def Destroy(self):  # noqa: N802
+        return None
+
+
+def _offer_host(monkeypatch, tmp_path, *, datalab: bool, scribe: bool, pick=0):
+    import quill.core.datalab_ocr as datalab_ocr
+    import quill.core.scribe.auth as scribe_auth
+
+    monkeypatch.setattr(datalab_ocr, "datalab_configured", lambda settings: datalab)
+    monkeypatch.setattr(scribe_auth, "check_allowed", lambda: None)
+    monkeypatch.setattr("quill.ui.dialog_contract.apply_modal_ids", lambda *a, **k: None)
+    host = _Host(answers=[_FakeWx.NO, _FakeWx.NO])
+    host._wx.SingleChoiceDialog = _ChoiceDialog
+    _ChoiceDialog.pick, _ChoiceDialog.last = pick, None
+    host.scribe_sent = []
+    host.cloud_runs = []
+    if scribe:
+        host._scribe_convert = lambda sources, **kw: host.scribe_sent.append(sources)
+    host._docconvert_run_cloud = lambda source: host.cloud_runs.append(source)
+    host._show_modal_dialog = lambda dialog, _t: 2 if _ChoiceDialog.pick is None else 1
+    source = tmp_path / "scan.pdf"
+    source.write_bytes(b"%PDF-1.4\n%%EOF\n")
+    return host, source
+
+
+def test_with_both_services_one_question_offers_both(monkeypatch, tmp_path) -> None:
+    host, source = _offer_host(monkeypatch, tmp_path, datalab=True, scribe=True, pick=1)
+    host._docconvert_offer_cloud(source)
+    choices = _ChoiceDialog.last.choices
+    assert "Scribe for Documents" in choices[0] and "Datalab" in choices[1]
+    assert host.cloud_runs == [source] and host.scribe_sent == []
+    assert host.message_boxes == []  # one question, not two in a row
+
+
+def test_with_both_services_scribe_can_be_chosen(monkeypatch, tmp_path) -> None:
+    host, source = _offer_host(monkeypatch, tmp_path, datalab=True, scribe=True, pick=0)
+    host._docconvert_offer_cloud(source)
+    assert len(host.scribe_sent) == 1 and host.cloud_runs == []
+
+
+def test_cancelling_the_choice_keeps_the_local_result(monkeypatch, tmp_path) -> None:
+    host, source = _offer_host(monkeypatch, tmp_path, datalab=True, scribe=True, pick=None)
+    host._docconvert_offer_cloud(source)
+    assert host.scribe_sent == [] and host.cloud_runs == []
+
+
+def test_datalab_alone_is_still_offered_with_scribe_unavailable(monkeypatch, tmp_path) -> None:
+    host, source = _offer_host(monkeypatch, tmp_path, datalab=True, scribe=False)
+    host._answers = [_FakeWx.YES]
+    host._docconvert_offer_cloud(source)
+    assert "Datalab cloud OCR" in host.message_boxes[0] and host.cloud_runs == [source]
+
+
+def test_scribe_alone_asks_yes_or_no(monkeypatch, tmp_path) -> None:
+    host, source = _offer_host(monkeypatch, tmp_path, datalab=False, scribe=True)
+    host._answers = [_FakeWx.YES]
+    host._docconvert_offer_cloud(source)
+    assert "Convert it with Scribe for Documents?" in host.message_boxes[0]
+    assert len(host.scribe_sent) == 1 and _ChoiceDialog.last is None
