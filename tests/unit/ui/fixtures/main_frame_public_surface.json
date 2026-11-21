@@ -809,6 +809,7 @@
   "scribe_options",
   "scribe_queue_wake",
   "scribe_repeat_last",
+  "scribe_resume_after_sign_in",
   "scribe_sign_in",
   "scribe_sign_out",
   "scribe_status",
