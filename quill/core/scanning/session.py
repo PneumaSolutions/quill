@@ -118,7 +118,12 @@ def scanner_labels(scanners: Sequence[ScannerInfo]) -> list[str]:
 
 
 def images_to_pdf(pages: Sequence[Path], target: Path, *, dpi: int = 300) -> Path:
-    """Write *pages* as one PDF, a page each, through Pillow."""
+    """Write *pages* as one PDF, a page each, through Pillow.
+
+    One page is decoded at a time and joined with pypdf, so a hundred colour
+    pages never sit in memory at once (about 26 MB each at 300 dpi; the
+    independent review's Q18). Without pypdf it falls back to one Pillow save.
+    """
     if not pages:
         raise ScanError("There are no pages to put in a PDF.")
     try:
@@ -127,6 +132,12 @@ def images_to_pdf(pages: Sequence[Path], target: Path, *, dpi: int = 300) -> Pat
         raise ScanError(
             "QUILL needs its image library (Pillow) to make a PDF from scanned pages."
         ) from None
+    try:
+        from pypdf import PdfWriter  # type: ignore[import-not-found,unused-ignore]
+    except ImportError:
+        PdfWriter = None  # noqa: N806
+    if PdfWriter is not None and len(pages) > 1:
+        return _pdf_page_by_page(Image, PdfWriter, pages, target, dpi)
     images: list[Any] = []
     try:
         for page in pages:
@@ -142,6 +153,35 @@ def images_to_pdf(pages: Sequence[Path], target: Path, *, dpi: int = 300) -> Pat
     finally:
         for image in images:
             image.close()
+    return target
+
+
+def _pdf_page_by_page(
+    image_module: Any, writer_class: Any, pages: Sequence[Path], target: Path, dpi: int
+) -> Path:
+    import io
+
+    writer = writer_class()
+    try:
+        for page in pages:
+            with image_module.open(page) as opened:
+                image = opened.convert("L" if opened.mode in ("1", "L", "LA") else "RGB")
+                try:
+                    one = io.BytesIO()
+                    image.save(one, "PDF", resolution=float(dpi))
+                finally:
+                    image.close()
+            one.seek(0)
+            writer.append(one)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        partial = target.with_name(target.name + ".part")
+        with open(partial, "wb") as handle:
+            writer.write(handle)
+        partial.replace(target)
+    except (OSError, ValueError) as exc:
+        raise ScanError(f"QUILL could not make a PDF of the scanned pages: {exc}") from None
+    finally:
+        writer.close()
     return target
 
 

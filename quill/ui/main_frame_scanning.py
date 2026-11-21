@@ -491,9 +491,8 @@ class ScanningMixin:
             elif use == USE_IMAGES:
                 self._scan_save_images(session)
         except Exception as exc:  # noqa: BLE001 - said; the pages are kept
-            # A full disk while copying pictures, or Pillow failing on a page,
-            # is said like a scanner error, and the pages stay: back to the
-            # chooser rather than losing them.
+            # A full disk or a Pillow failure is said, and the pages stay:
+            # back to the chooser rather than losing them.
             from quill.core.scanning.base import plain_message
 
             self._scan_say_problem(plain_message(exc))
@@ -534,9 +533,25 @@ class ScanningMixin:
             target = target.with_suffix(".pdf")
         from quill.core.scanning import images_to_pdf
 
-        images_to_pdf(session.pages, target, dpi=session.options.dpi)
-        session.cleanup()
-        self._announce(f"Saved {target.name} in {target.parent}.")
+        # Off the UI thread, so the window and screen reader stay responsive (Q18).
+        self._announce("Saving the PDF...")
+
+        def _run(progress_callback, cancellation_token, **_kw):
+            return images_to_pdf(session.pages, target, dpi=session.options.dpi)
+
+        def _saved(_op, _result) -> None:
+            session.cleanup()
+            self._announce(f"Saved {target.name} in {target.parent}.")
+
+        def _failed(_op, error) -> None:
+            from quill.core.scanning.base import plain_message
+
+            self._scan_say_problem(plain_message(error))
+            self._scan_offer_uses(session)  # the pages are kept
+
+        self._task_manager.submit(
+            name="scan-save-pdf", func=_run, on_success=_saved, on_failure=_failed
+        )
 
     def _scan_save_images(self, session: Any) -> None:
         wx = self._wx

@@ -333,3 +333,46 @@ def test_scanner_and_download_paths_never_travel_in_a_portable_export() -> None:
         "scanner_device_name",
         "scribe_download_folder",
     } <= LOCAL_SETTINGS
+
+
+def test_a_scan_stopped_for_time_keeps_the_pages_it_saved(tmp_path) -> None:
+    """Independent review Q21: the pages already saved were dropped on a timeout."""
+    process = _Process("", polls=10**9)
+    now = [0.0]
+
+    def clock():
+        now[0] += 100.0
+        return now[0]
+
+    out = tmp_path / "o"
+    out.mkdir()
+    (out / "page-001.png").write_bytes(b"png")
+    (out / "page-002.png").write_bytes(b"png")
+    backend = pagescan_cli.PagescanBackend(
+        _tool(tmp_path), spawn=lambda a: process, sleep=lambda _s: None, clock=clock
+    )
+    pages = backend.scan("dev", ScanOptions(), out)
+    assert [p.name for p in pages] == ["page-001.png", "page-002.png"] and process.killed
+
+
+def test_a_chatty_tool_never_blocks_on_its_pipes(tmp_path) -> None:
+    """stdout is read as it comes and stderr is not piped at all (Q21)."""
+    import io
+    import subprocess
+
+    page = tmp_path / "o" / "scan-001.png"
+    page.parent.mkdir()
+    page.write_bytes(b"png")
+    import json
+
+    reply = json.dumps({"ok": True, "files": [str(page)]})
+    process = _Process("", polls=2)
+    process.stdout = io.BytesIO(("progress\n" * 50000 + reply + "\n").encode())
+    backend = pagescan_cli.PagescanBackend(
+        _tool(tmp_path), spawn=lambda a: process, sleep=lambda _s: None
+    )
+    assert backend.scan("dev", ScanOptions(), tmp_path / "o") == [page]
+    import inspect
+
+    source = inspect.getsource(pagescan_cli.PagescanBackend._scan_process)
+    assert "stderr=subprocess.DEVNULL" in source and subprocess.DEVNULL is not None

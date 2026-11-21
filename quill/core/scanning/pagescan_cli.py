@@ -312,7 +312,15 @@ class PagescanBackend(ScannerBackend):
     ) -> list[Path]:
         out_dir.mkdir(parents=True, exist_ok=True)
         args = self.scan_args(device_id, options, out_dir, source)
-        stdout = self._scan_process(args, cancel_requested)
+        try:
+            stdout = self._scan_process(args, cancel_requested)
+        except ScanTimedOut:
+            # The tool was stopped, but the pages it had saved are still in
+            # the folder: keep them (independent review Q21).
+            kept = sorted(p for p in out_dir.glob("*.png") if p.is_file())
+            if kept:
+                return kept
+            raise
         reply = parse_reply(stdout)
         files = [Path(str(f)) for f in reply.get("files") or () if str(f).strip()]
         files = [f for f in files if f.is_file() and _inside(f, out_dir)]
@@ -330,9 +338,12 @@ class PagescanBackend(ScannerBackend):
             from quill.stability.safe_subprocess import spawn_subprocess_safely
 
             try:
-                process = spawn_subprocess_safely(args)
+                # stderr goes nowhere: nobody reads it, and a full pipe would
+                # block the tool mid-scan (Q21). stdout is drained as it comes.
+                process = spawn_subprocess_safely(args, stderr=subprocess.DEVNULL)
             except OSError as exc:
                 raise ScannerToolMissing(f"{MISSING_SENTENCE} ({exc})") from None
+        drained = _drain(process)
         deadline = self._clock() + SCAN_TIMEOUT_S
         cancelled = False
         while process.poll() is None:
@@ -345,14 +356,48 @@ class PagescanBackend(ScannerBackend):
                 process.wait()
                 if cancelled:
                     raise ScanCancelled("Scan stopped.")
-                raise ScanError("The scan took too long and was stopped. Try again.")
+                raise ScanTimedOut("The scan took too long and was stopped. Try again.")
             self._sleep(_POLL_S)
-        out, _err = process.communicate()  # stderr is never part of the answer
+        out = drained() if drained is not None else process.communicate()[0]
         if cancelled:
             raise ScanCancelled("Scan stopped.")
         if isinstance(out, bytes):
             return out.decode("utf-8", errors="replace")
         return str(out or "")
+
+
+class ScanTimedOut(ScanError):
+    """The tool ran past its time and was stopped (its saved pages are kept)."""
+
+    code = "QUILL-SCAN-DEVICE-TIMEOUT"
+
+
+def _drain(process: Any) -> Callable[[], bytes] | None:
+    """Read the tool's stdout on a thread as it comes, so it can never block on
+    a full pipe. Returns a function giving everything read once it ended."""
+    import threading
+
+    stream = getattr(process, "stdout", None)
+    if stream is None or not hasattr(stream, "read"):
+        return None
+    chunks: list[bytes] = []
+
+    def _read() -> None:
+        try:
+            for chunk in iter(lambda: stream.read(65536), b""):
+                chunks.append(chunk if isinstance(chunk, bytes) else str(chunk).encode())
+        except (OSError, ValueError):
+            pass
+
+    reader = threading.Thread(target=_read, name="pagescan-stdout", daemon=True)
+    reader.start()
+
+    def _result() -> bytes:
+        process.wait()
+        reader.join(timeout=5.0)
+        return b"".join(chunks)
+
+    return _result
 
 
 def _inside(path: Path, folder: Path) -> bool:
