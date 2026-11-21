@@ -297,15 +297,75 @@ what was done; the reviewer's numbers are kept.
   input extension is cut from a title; a long file name keeps its extension and
   is cut by bytes; Windows device names are guarded for folders too.
 
-### Still open
+### Second round: the rest of the findings
 
-These were not part of this round and stay open, with the reviewer's numbers:
-Q14 (a job run by another app is announced as finished "while QUILL was
-closed"), Q17 (Send before the lists load resets the language), Q18 (large files
-read whole, some on the UI thread), Q21 (the scan's unread pipes), Q22 (a stale
-My Scribe Documents list), Q24 (password handling details), Q25 (offline gives
-up after about two and a half minutes; an interrupted upload is not resumed),
-and the low findings other than Q27. Q33 is worth naming: the needs-pages
-sentence promises "Open Preview", which does not exist yet. The design note
-still says the NVDA, JAWS and Narrator passes are to do; the Windows tests and
-a screen-reader pass on the changed windows are the next step.
+Mike's rule is that a review is done when its findings are fixed, so the
+findings left open after the first round were taken up the same day. Tests are
+again named for the finding, in `tests/unit/core/test_scribe_review.py`,
+`tests/unit/ui/test_main_frame_scribe.py` and, for the windows themselves,
+`tests/unit/ui/test_scribe_windows_real_wx.py` (real wx; run on Windows).
+
+- **Q14. A job run by another open app was said as "finished while QUILL was
+  closed".** *Fixed:* the app that started a job says and opens its result
+  even when another app ran it (each finished job is claimed once, `delivered`
+  on the job). Only when that app's process is gone does the app running the
+  queue say it, as "finished while QUILL was closed".
+- **Q17. Send before the lists loaded saved "detect" as the language.**
+  *Fixed:* a list that has not loaded, or failed, keeps the incoming choice.
+- **Q18. Large files read whole, some on the UI thread.** *Fixed:* the upload
+  is streamed from disk with its exact `Content-Length` (`http.MultipartFile`;
+  a retry after a 401 opens it again); a PDF over 25 MB is described from its
+  first and last megabyte, never read whole; scanned pages are decoded one at a
+  time and joined with pypdf, and Save as a PDF runs on the task pool.
+- **Q21. The scan could deadlock on a full pipe.** *Fixed:* pagescan's stderr
+  goes nowhere, stdout is drained on a thread, and a scan stopped for time keeps
+  the pages already saved.
+- **Q22. My Scribe Documents could show live documents under Trash.** *Fixed:*
+  each load is numbered; only the newest, for the view it asked for, is shown.
+- **Q24. Password handling.** *Fixed:* a wrong password stays selected in the
+  same dialog with the tries left said, and the third ends it (PRD 7.3); a job
+  from a link or from My Scribe Documents can be given its password (Scribe
+  checks it); a password handed to another app expires after ten minutes and
+  is wiped when the app that left it closes. Tests check that it reaches
+  neither the log nor `queue.json`.
+- **Q25. Offline gave up after about two and a half minutes, and uploads were
+  not resumed.** *Fixed:* reconnecting goes on for two hours, each wait up to a
+  minute, with the next try shown in the job's details. A dropped upload is
+  said once ("Upload of Notes.pdf was interrupted; QUILL will resume it.") and
+  resumed. Scribe's API has no resumable upload, so a resumed upload starts
+  over; before it does, QUILL looks for a document an earlier try created (same
+  name, made since the upload started, held by no other job) and takes it, so
+  nothing is sent or charged twice.
+- **Q33. "Open Preview" was promised but did not exist.** *Fixed:* a job that
+  ran out of pages has Open Preview, which opens the document's own page on
+  Scribe, signed in, where the free first two pages can be read. The page's
+  address (`/documents/<id>`) is inferred from Scribe's purchase links and
+  needs one live check.
+- **Low findings.** Fixed: Q26 (a result always gets its format's extension),
+  Q27 (first round), Q29 (a refresh token another app just rotated is read back
+  from the vault, not a sign-out), Q30 (only a 401 or 403 handshake means signed
+  out), Q31 (the private Word copy is removed when the job is done; scanned
+  pages kept for the OCR review are left, as that review reads them), Q32 (no
+  Scribe log line carries a path, a token or a password: failures log the
+  error's type only), Q35 (Open in QUILL without a Word version shows the
+  Convert dialog), Q36 (first round), Q38 (Remove keeps its place and says what
+  removing a running job means; Retry and Remove no longer share R), Q39, Q40,
+  Q41, Q42, Q43 (links named by their file and stripped of their query once
+  fetched; finished jobs leave the list after 30 days), Q44 (dates read as
+  dates), Q46 (Sign Out always wipes).
+
+### Still open, and why
+
+- **Q28** (the access token in the account page's URL) stays an accepted risk,
+  as above; it needs a server endpoint that takes a one-time code.
+- **Q34** (`TIER_SCRIBE` in `import_convert`) is not added: the Scribe import
+  is announced by the one result sentence (FUX-04), and a second sentence from
+  the import tiers would say it twice.
+- **Q37** ("in front" counts only this app's own window, not the family's)
+  needs the apps to share which one is in front; there is no channel for that
+  yet.
+- **Q44**, the rest: most Scribe strings still bypass `_()`, as the family's
+  other strings do, and file names are not bidi-isolated.
+- **Q45** (pinning pagescan's hash in the build scripts) waits for a pagescan
+  release whose hash can be pinned.
+- The NVDA, JAWS and Narrator passes on the changed windows are still to do.

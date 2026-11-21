@@ -62,6 +62,18 @@
   only point at a pagescan on this computer, never a network share, and the
   bundled copy is always used when it is there; a shared settings file no
   longer carries that path.
+- **The rest of the review is fixed too.** A result is said and opened in
+  the QUILL app that started it, even when another app did the work. When
+  the internet drops, QUILL keeps trying for up to two hours, shows when it
+  will try next, and resumes an interrupted upload without sending the
+  document twice. A wrong PDF password stays selected in the same box, with
+  the tries left said. When your pages run out, Open Preview opens the free
+  first two pages on Scribe's website. Large files are sent straight from
+  disk, scans with many pages are saved as a PDF one page at a time, and a
+  long feeder scan can no longer stall. My Scribe Documents never shows an
+  old list under Trash, and its dates read as dates. Links are named by
+  their file name, finished jobs leave Scribe Conversions after 30 days, and
+  a downloaded file always gets the right extension for its format.
 
 ### More settings that stick: Studio, Media Player, Transcribe, Beacon, Weather, Radio and QUILL's dialogs (2026-11-20)
 
