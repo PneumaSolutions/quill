@@ -288,6 +288,7 @@ _CHORD_COMMAND_TITLES: dict[str, str] = {
     "tools.read_aloud_stop": "Read Aloud Stop",
     "tools.dictation_toggle": "Dictation Toggle",
     "tools.describe_image": "Describe Image",
+    "file.scan": "Scan Pages",
     "edit.copy_selection_for_email": "Copy Selection For Email",
     "app.preferences_hub": "More Preferences",
     "edit.open_review_buffer": "Review Buffer",

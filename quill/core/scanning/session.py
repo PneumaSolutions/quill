@@ -199,6 +199,32 @@ def _unique(path: Path) -> Path:
     return candidate
 
 
+def scan_name(now: Any = None) -> str:
+    """ "Scan 2026-11-21 0930": a name that sorts and does not repeat within a minute."""
+    import datetime as _dt
+
+    moment = now or _dt.datetime.now()
+    return f"Scan {moment:%Y-%m-%d %H%M}"
+
+
+def documents_folder(home: Path | None = None) -> Path:
+    """The person's Documents folder, or their home folder when there is none."""
+    base = home or Path.home()
+    documents = base / "Documents"
+    return documents if documents.is_dir() else base
+
+
+def folder_is_writable(folder: Path) -> bool:
+    import os
+
+    return folder.is_dir() and os.access(folder, os.W_OK)
+
+
+def unique_path(folder: Path, stem: str, extension: str) -> Path:
+    """``folder/stem.ext``, or ``stem (2).ext`` and so on: never an existing file."""
+    return _unique(folder / f"{stem}{extension}")
+
+
 def page_count_sentence(count: int) -> str:
     return "1 page" if count == 1 else f"{count} pages"
 
@@ -209,7 +235,11 @@ __all__ = [
     "UnsupportedPlatformBackend",
     "backend_for_platform",
     "choose_scanner",
+    "documents_folder",
+    "folder_is_writable",
     "images_to_pdf",
     "page_count_sentence",
+    "scan_name",
     "scanner_labels",
+    "unique_path",
 ]

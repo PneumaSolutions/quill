@@ -326,6 +326,7 @@ class MenuBuilderMixin:
             self._menu_label(_("Other Pandoc Format..."), "file.import_other_pandoc"),
         )
         file_menu.AppendSubMenu(import_menu, _("&Import"))
+        self._append_scan_rows(file_menu)  # Scan Pages, Choose Scanner: main_frame_scanning.py
 
         export_menu = wx.Menu()
         export_menu.Append(

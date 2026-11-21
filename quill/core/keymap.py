@@ -628,6 +628,8 @@ DEFAULT_KEYMAP: dict[str, str] = {
     # editing-loop verb -- and Ctrl+Shift+I is where Insert Image goes, so
     # Ctrl+Alt+I can be Insert Markdown Tag as it is in QUILL Lite.
     "tools.document_intake_report": "Ctrl+Shift+Grave, Shift+I",  # I = Intake
+    # Scan Pages: a free leader key; the main table has nothing left (rule 9).
+    "file.scan": "Ctrl+Shift+Grave, Shift+E",
     # #357 keymap consolidation: AI commands move from inline F7/Shift+F7/F8/ Shift+F8/Ctrl+Shift+T
     # accelerators (which collided with the selection bindings at F8/Shift+F8/Ctrl+F8) to
     # Ctrl+Alt+Shift+ chords, matching the EdSharp port convention. The chord class is reserved for

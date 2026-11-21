@@ -19,8 +19,9 @@ a timeout, and only from a worker thread.
 Where the tool is found, first match wins: the path in Options (Scanning
 tab, ``scanner_tool_path``), the ``QUILL_SCANNER_TOOL`` environment variable,
 ``{app}/tools/scanner/wia-scan.exe`` beside an installed QUILL
-(``QUILL_APP_ROOT``), ``<QUILL data>/tools/scanner/wia-scan.exe``, then
-``PATH``. It is local-only: nothing here touches the network.
+(``QUILL_APP_ROOT``), ``tools/scanner/wia-scan.exe`` in a source checkout,
+``<QUILL data>/tools/scanner/wia-scan.exe``, then ``PATH``. It is local-only:
+nothing here touches the network.
 """
 
 from __future__ import annotations
@@ -70,6 +71,8 @@ def find_tool(configured: str = "", *, environ: dict[str, str] | None = None) ->
     app_root = env.get("QUILL_APP_ROOT", "").strip()
     if app_root:
         candidates.append(Path(app_root) / "tools" / "scanner" / TOOL_NAME)
+    # A run from source: the gitignored tools/scanner folder of the checkout.
+    candidates.append(Path(__file__).resolve().parents[3] / "tools" / "scanner" / TOOL_NAME)
     try:
         from quill.core.paths import app_data_dir
 

@@ -178,6 +178,8 @@ COMMAND_FEATURE_MAP: dict[str, str] = {
     "tools.ocr_service_settings": "core.ocr",
     "tools.delete_ocr_temp": "core.ocr",
     "tools.scribe_convert": "core.ocr",
+    "file.scan": "core.ocr",
+    "file.scan_choose_scanner": "core.ocr",
     "tools.scribe_sign_in": "core.ocr",
     "tools.scribe_sign_out": "core.ocr",
     "tools.ocr_clipboard": "core.ocr",

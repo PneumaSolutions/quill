@@ -56,6 +56,13 @@ class ScanCancelled(ScanError):
     code = "QUILL-SCAN-DEVICE-CANCELLED"
 
 
+def plain_message(error: BaseException) -> str:
+    """The sentence a listener hears: the message without the support code."""
+    if error.args and isinstance(error.args[0], str):
+        return error.args[0]
+    return str(error)
+
+
 @dataclass(frozen=True, slots=True)
 class ScannerInfo:
     """One scanner, as a backend lists it."""
@@ -126,4 +133,5 @@ __all__ = [
     "ScannerBackend",
     "ScannerInfo",
     "ScannerToolMissing",
+    "plain_message",
 ]

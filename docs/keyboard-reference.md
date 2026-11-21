@@ -11,7 +11,7 @@ chords: press Ctrl+Shift+Grave, release, then the second key. Every
 binding here is a *default* -- the in-app reference (Help > Open
 Keyboard Reference) always shows your own customised keymap.
 
-Editor commands with default bindings: 596.
+Editor commands with default bindings: 597.
 
 ## The QUILL editor
 
@@ -47,6 +47,7 @@ Editor commands with default bindings: 596.
 | Ctrl+W | Close Document | `file.close_document` |
 | QUILL Key + B | Batch conversion | `file.batch_conversion` |
 | QUILL Key + G | Open From Favorite Folder... | `file.open_from_favorite_folder` |
+| QUILL Key + Shift+E | Scan Pages... | `file.scan` |
 | QUILL Key + Shift+F | Add Current Folder to Favorites | `file.add_favorite_folder` |
 | QUILL Key + Shift+X | Remove Favorite Folder... | `file.remove_favorite_folder` |
 

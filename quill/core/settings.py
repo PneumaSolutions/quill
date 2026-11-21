@@ -17,6 +17,7 @@ from quill.core.monitor_policy import (
 )
 from quill.core.paths import app_data_dir
 from quill.core.recovery_triage import DEFAULT_KEEP_DAYS as RECOVERY_KEEP_DAYS
+from quill.core.scanning.settings_fields import load_scanner_fields
 from quill.core.session_restore import ASK_MODES
 from quill.core.settings_normalizers import (
     STATUS_BAR_ITEMS,
@@ -877,6 +878,12 @@ class Settings(DictationSettings):  # the windows_dictation_* fields, shared wit
     # chapter marker. Remembered because the step somebody picked by ear is
     # the step they will want next session too.
     audio_studio_chapter_nudge_ms: int = 500  # 10-60000
+    # Scanning (Options > Scanning; quill/core/scanning/settings_fields.py).
+    scanner_device: str = ""  # the remembered scanner's id; blank = ask if several
+    scanner_device_name: str = ""
+    scanner_dpi: str = "300"  # a choice in Options, so stored as text
+    scanner_color: str = "gray"  # "gray" or "color"
+    scanner_tool_path: str = ""  # Windows: wia-scan.exe; blank = the bundled one
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Settings:
@@ -2029,6 +2036,7 @@ class Settings(DictationSettings):  # the windows_dictation_* fields, shared wit
             batch_speech_intro_section_title=batch_speech_intro_section_title,
             audio_studio_last_journey=audio_studio_last_journey,
             audio_studio_chapter_nudge_ms=audio_studio_chapter_nudge_ms,
+            **load_scanner_fields(data),
         )
 
 

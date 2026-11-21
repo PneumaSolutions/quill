@@ -928,7 +928,12 @@
             "batch_speech_temp_folder": "str",
             "batch_speech_save_spoken_text": "bool",
             "audio_studio_last_journey": "str",
-            "audio_studio_chapter_nudge_ms": "int"
+            "audio_studio_chapter_nudge_ms": "int",
+            "scanner_device": "str",
+            "scanner_device_name": "str",
+            "scanner_dpi": "str",
+            "scanner_color": "str",
+            "scanner_tool_path": "str"
           }
         },
         "groups:quill.core.settings_migration:to_versioned": {
@@ -1346,12 +1351,17 @@
           "batch_speech_temp_folder": "_ungrouped",
           "batch_speech_save_spoken_text": "_ungrouped",
           "audio_studio_last_journey": "_ungrouped",
-          "audio_studio_chapter_nudge_ms": "_ungrouped"
+          "audio_studio_chapter_nudge_ms": "_ungrouped",
+          "scanner_device": "_ungrouped",
+          "scanner_device_name": "scanning",
+          "scanner_dpi": "scanning",
+          "scanner_color": "scanning",
+          "scanner_tool_path": "scanning"
         },
         "constant:quill.core.settings_migration:SETTINGS_SCHEMA_VERSION": "2"
       },
       "classification": "additive, compatible",
-      "note": ""
+      "note": "2026-11-21: five scanner_* fields (Options > Scanning); older builds ignore unknown keys"
     },
     "radio.favorites": {
       "current": 1,

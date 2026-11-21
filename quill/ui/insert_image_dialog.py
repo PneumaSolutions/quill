@@ -56,6 +56,7 @@ class InsertImageDialog:
         *,
         html_mode: bool = False,
         ai_suggest_cb: Callable[[str], tuple[str | None, str | None]] | None = None,
+        initial_path: str = "",
     ) -> None:
         self._announce = announce_cb or (lambda _msg: None)
         self._html_mode = html_mode
@@ -180,7 +181,13 @@ class InsertImageDialog:
         if self._btn_ai is not None:
             self._btn_ai.Bind(wx.EVT_BUTTON, self._on_suggest_ai)
 
-        self._path_ctrl.SetFocus()
+        if initial_path:
+            # A page just scanned (File > Scan Pages): the file is chosen, so
+            # the first thing to do is describe it.
+            self._path_ctrl.SetValue(initial_path)
+            self._alt_ctrl.SetFocus()
+        else:
+            self._path_ctrl.SetFocus()
 
     # -- public API --
 

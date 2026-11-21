@@ -133,6 +133,14 @@ SETTING_GROUPS: tuple[SettingGroup, ...] = (
         "How a misspelling is reported: the F7 review, the letters, and the alert while you type.",
     ),
     SettingGroup(
+        "scanning",
+        "Scanning",
+        (
+            "Your scanner's resolution and color. File > Scan > Choose Scanner "
+            "picks which scanner QUILL uses."
+        ),
+    ),
+    SettingGroup(
         "experimental",
         "Experimental",
         (
@@ -2233,6 +2241,50 @@ SETTING_SPECS: tuple[SettingSpec, ...] = (
             ("images_pdf_docs", "Images, PDF, and text documents"),
         ),
         keywords=("file types", "images", "pdf", "documents"),
+    ),
+    SettingSpec(
+        "scanner_dpi",
+        "Scan resolution (dots per inch)",
+        "scanning",
+        "choice",
+        (
+            "How finely pages are scanned. 300 is best for reading text; higher "
+            "makes bigger files and slower scans."
+        ),
+        choices=tuple((str(dpi), f"{dpi} dpi") for dpi in (150, 200, 300, 400, 600)),
+        feature_id="core.ocr",
+        keywords=("scan", "scanner", "dpi", "resolution"),
+    ),
+    SettingSpec(
+        "scanner_color",
+        "Scan in",
+        "scanning",
+        "choice",
+        "Gray is best for text and makes smaller files. Choose color for photos.",
+        choices=(("gray", "Gray (best for text)"), ("color", "Color")),
+        feature_id="core.ocr",
+        keywords=("scan", "scanner", "color", "gray", "grey"),
+    ),
+    SettingSpec(
+        "scanner_device_name",
+        "Default scanner",
+        "scanning",
+        "text",
+        (
+            "The scanner QUILL uses without asking. Leave blank to be asked when "
+            "more than one scanner is found. File > Scan > Choose Scanner sets it."
+        ),
+        feature_id="core.ocr",
+        keywords=("scan", "scanner", "default", "device"),
+    ),
+    SettingSpec(
+        "scanner_tool_path",
+        "Scanner tool location (Windows)",
+        "scanning",
+        "text",
+        ("Where wia-scan.exe is. Leave blank to use the one installed with QUILL."),
+        feature_id="core.ocr",
+        keywords=("scan", "scanner", "wia", "tool", "path"),
     ),
     SettingSpec(
         "shell_verb_open",

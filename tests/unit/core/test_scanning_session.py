@@ -99,3 +99,17 @@ def test_platforms_get_their_backend() -> None:
     assert isinstance(other, UnsupportedPlatformBackend)
     with pytest.raises(scanning.ScanError, match="Windows and macOS"):
         other.list_scanners()
+
+
+def test_file_helpers(tmp_path) -> None:
+    import datetime
+
+    from quill.core.scanning import session
+
+    assert session.scan_name(datetime.datetime(2026, 11, 21, 9, 30)) == "Scan 2026-11-21 0930"
+    assert session.documents_folder(tmp_path) == tmp_path
+    (tmp_path / "Documents").mkdir()
+    assert session.documents_folder(tmp_path) == tmp_path / "Documents"
+    assert session.folder_is_writable(tmp_path)
+    (tmp_path / "a.pdf").write_text("x")
+    assert session.unique_path(tmp_path, "a", ".pdf").name == "a (2).pdf"
