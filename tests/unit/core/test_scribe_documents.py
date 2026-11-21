@@ -60,9 +60,18 @@ def _run(job, module, secrets, **kwargs):
 # ------------------------------------------------------------- client id
 
 
+def test_the_registered_client_id_is_built_in(monkeypatch) -> None:
+    monkeypatch.delenv(scribe.SCRIBE_CLIENT_ID_ENV, raising=False)
+    assert scribe.SCRIBE_CLIENT_ID != scribe.SCRIBE_CLIENT_ID_PLACEHOLDER
+    assert scribe.client_id() == scribe.SCRIBE_CLIENT_ID
+    assert scribe.client_id_configured()
+
+
 def test_the_placeholder_client_id_means_not_registered(monkeypatch) -> None:
     monkeypatch.delenv(scribe.SCRIBE_CLIENT_ID_ENV, raising=False)
-    assert scribe.SCRIBE_CLIENT_ID == scribe.SCRIBE_CLIENT_ID_PLACEHOLDER
+    import quill.core.scribe_account as account
+
+    monkeypatch.setattr(account, "SCRIBE_CLIENT_ID", account.SCRIBE_CLIENT_ID_PLACEHOLDER)
     assert not scribe.client_id_configured()
 
 

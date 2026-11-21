@@ -7,11 +7,11 @@ step raises, and the authenticated client. Split from
 :mod:`quill.core.scribe_documents` (GATE-11), which re-exports all of it.
 
 The client ID: Scribe registers each app at https://scribeit.io/developer as a
-public PKCE client (no secret). Pneuma Solutions will register "QUILL" and
-supply the ID for :data:`SCRIBE_CLIENT_ID`. Until then the placeholder keeps
-the feature honest: it says the build is not registered instead of opening a
-sign-in page that would fail. ``QUILL_SCRIBE_CLIENT_ID`` overrides it for
-development and testing.
+public PKCE client (no secret). Pneuma Solutions registered "QUILL" there
+(Windows and macOS, approved 2026-11-20) and :data:`SCRIBE_CLIENT_ID` holds
+its public ID. If the ID is ever the placeholder, the feature says the build
+is not registered instead of opening a sign-in page that would fail.
+``QUILL_SCRIBE_CLIENT_ID`` overrides it for development and testing.
 
 GATE-9 / network egress: :func:`_make_client` is one of the two Scribe entries
 in ``_NON_AST_EGRESS`` (``scribe-client`` networks inside a compiled
@@ -31,10 +31,9 @@ from quill.core.secrets import SecretRef, SecretsManager
 
 SCRIBE_BASE_URL = "https://scribeit.io"
 
-#: Placeholder until Pneuma Solutions registers QUILL at
-#: https://scribeit.io/developer and supplies the public client ID.
+#: Shown as "not registered" if SCRIBE_CLIENT_ID is ever reset to it.
 SCRIBE_CLIENT_ID_PLACEHOLDER = "REPLACE-WITH-QUILL-CLIENT-ID"
-SCRIBE_CLIENT_ID = SCRIBE_CLIENT_ID_PLACEHOLDER
+SCRIBE_CLIENT_ID = "8b535f02eb781e4ccab66bf88b93fc47a8605303bdf352d197788812bbb140da"
 SCRIBE_CLIENT_ID_ENV = "QUILL_SCRIBE_CLIENT_ID"
 
 #: The loopback redirect registered for QUILL. Scribe only redirects to a URI
