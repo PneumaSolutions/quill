@@ -177,6 +177,7 @@ class ScribeConvertDialog:
         self.buy.Bind(wx.EVT_BUTTON, lambda _e: self._buy())
         self.dialog.Bind(wx.EVT_ACTIVATE, self._on_activate)
         self.dialog.Bind(wx.EVT_CHILD_FOCUS, self._scroll_to_focus)
+        self.dialog.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         self._formats_changed()
         self._refresh_pages()
         self.consent.SetFocus()
@@ -237,6 +238,13 @@ class ScribeConvertDialog:
         self._bought = True
         webbrowser.open(ScribeClient().purchase_url())
 
+    def _on_char_hook(self, event: Any) -> None:
+        """Escape stops a playing voice sample without closing (PRD 7.3)."""
+        if event.GetKeyCode() == self.wx.WXK_ESCAPE and self.groups.sample.playing:
+            self.groups.sample.stop()
+            return
+        event.Skip()
+
     def _scroll_to_focus(self, event: Any) -> None:
         event.Skip()
         window = event.GetWindow()
@@ -278,6 +286,7 @@ class ScribeConvertDialog:
         return self.request
 
     def close(self) -> None:
+        self.groups.sample.release()
         self.dialog.Destroy()
 
 

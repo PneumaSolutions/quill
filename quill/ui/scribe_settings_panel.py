@@ -105,6 +105,12 @@ class ScribeSettingsGroups:
             lambda p: wx.Choice(p, choices=["Loading voices..."]),
             "The voice for MP3 audio and DAISY.",
         )
+        from quill.ui.scribe_voice_sample import VoiceSample
+
+        # Created right after the voice, so Tab reaches it next (PRD 7.3: "beside the voice").
+        self.sample = VoiceSample(owner, self.host, self.voice_sample_choice)
+        self.voice.GetContainingSizer().Add(self.sample.button, 0, wx.LEFT, 6)
+        self.sample.button.Disable()
         self.retry = wx.Button(owner, label="R&etry")
         self.retry.SetHelpText("Load the languages, voices and braille tables again.")
         self.retry.Hide()
@@ -135,6 +141,7 @@ class ScribeSettingsGroups:
         )
         self.language.Bind(wx.EVT_CHOICE, lambda _e: self._fill_dialects())
         self.dialect.Bind(wx.EVT_CHOICE, lambda _e: self._fill_voices())
+        self.voice.Bind(wx.EVT_CHOICE, lambda _e: self.sample.refresh())
         self.retry.Bind(wx.EVT_BUTTON, lambda _e: self.load_lists(force=True))
 
     def _build_braille(self) -> None:
@@ -294,11 +301,16 @@ class ScribeSettingsGroups:
             [n for n, _s, _h in rows] or ["Scribe's default voice"],
             _index([s for _n, s, _h in rows], chosen),
         )
+        self.sample.refresh()
 
     def voice_short_name(self) -> str:
         rows = self._voices.get(self._locale(), [])
         index = self.voice.GetSelection()
         return rows[index][1] if 0 <= index < len(rows) else ""
+
+    def voice_sample_choice(self) -> tuple[str, bool]:
+        """The chosen voice's short name and whether Scribe has a sample of it."""
+        return self.voice_short_name(), self.voice_has_sample()
 
     def voice_has_sample(self) -> bool:
         rows = self._voices.get(self._locale(), [])
