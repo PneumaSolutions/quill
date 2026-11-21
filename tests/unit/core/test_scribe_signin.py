@@ -120,7 +120,8 @@ def test_a_rejected_code_exchange_is_a_sentence() -> None:
 
 
 def test_the_placeholder_client_id_never_opens_a_browser(monkeypatch) -> None:
-    monkeypatch.delenv(scribe.SCRIBE_CLIENT_ID_ENV, raising=False)
+    # QUILL is registered now, so stand in a build that still carries the placeholder.
+    monkeypatch.setenv(scribe.SCRIBE_CLIENT_ID_ENV, scribe.SCRIBE_CLIENT_ID_PLACEHOLDER)
     opened: list[str] = []
     with pytest.raises(scribe.ScribeDocumentsError, match="not registered"):
         sign_in(module=FakeModule(), manager=memory_secrets(), open_browser=opened.append)

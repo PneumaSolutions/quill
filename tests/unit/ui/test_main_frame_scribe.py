@@ -293,7 +293,8 @@ def test_not_signed_in_offers_sign_in(fake, monkeypatch) -> None:
 
 
 def test_an_unregistered_build_says_so_and_does_nothing(fake, monkeypatch) -> None:
-    monkeypatch.delenv(scribe.SCRIBE_CLIENT_ID_ENV, raising=False)
+    # QUILL is registered now, so stand in a build that still carries the placeholder.
+    monkeypatch.setenv(scribe.SCRIBE_CLIENT_ID_ENV, scribe.SCRIBE_CLIENT_ID_PLACEHOLDER)
     host = _Host()
     host.convert_with_scribe()
     assert "not registered" in host.boxes[0][1]
