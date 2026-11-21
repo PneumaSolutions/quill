@@ -244,6 +244,31 @@
 <main id="main-content" tabindex="-1">
 <h1 id="changelog">Changelog</h1>
 <h2 id="100">1.0.0</h2>
+<h3 id="scanning-on-windows-and-macos-with-pagescan-2026-11-21">Scanning
+on Windows and macOS with pagescan (2026-11-21)</h3>
+<ul>
+<li><strong>File &gt; Import &gt; Scan Pages uses one scanner tool on
+both systems.</strong> QUILL now scans through pagescan, Pneuma
+Solutions’ small open-source scanner tool (MIT), on Windows and on a
+Mac. It is installed with QUILL in its tools\scanner folder and works
+with USB scanners and network (AirScan/eSCL) scanners. On a Mac it
+replaces the earlier Image Capture code, so QUILL no longer needs the
+pyobjc-framework-ImageCaptureCore package.</li>
+<li><strong>The glass first, then the feeder.</strong> A scanner with a
+glass scans from it; one with only a document feeder scans from the
+feeder. QUILL always asks for the glass or the feeder by name, so a
+scanner whose parts are numbered differently from one day to the next
+still scans.</li>
+<li><strong>An existing install keeps scanning.</strong> On Windows
+QUILL still finds the tool under its old name, wia-scan.exe, until
+pagescan.exe is installed beside it. Options &gt; Scanning, Scanner tool
+location, now works on a Mac too, and takes a file or a folder.</li>
+<li><strong>Builds bundle the tool.</strong> The Windows build copies
+pagescan.exe into tools\scanner (<code>--scanner-tool</code>, or
+tools\scanner\pagescan.exe in the checkout) and the Mac build puts
+pagescan in the app and signs it. pagescan is listed in the third-party
+notices.</li>
+</ul>
 <h3
 id="more-settings-that-stick-studio-media-player-transcribe-beacon-weather-radio-and-quills-dialogs-2026-11-20">More
 settings that stick: Studio, Media Player, Transcribe, Beacon, Weather,
