@@ -884,7 +884,7 @@ class Settings(DictationSettings):  # the windows_dictation_* fields, shared wit
     scanner_device_name: str = ""
     scanner_dpi: str = "300"  # a choice in Options, so stored as text
     scanner_color: str = "gray"  # "gray" or "color"
-    scanner_tool_path: str = ""  # Windows: wia-scan.exe; blank = the bundled one
+    scanner_tool_path: str = ""  # pagescan (or its folder); blank = the bundled one
     # Scribe for Documents (Options > Scribe for Documents; core/scribe/settings_fields.py).
     scribe_default_formats: str = "docx"  # comma-separated Scribe format ids
     scribe_download_folder: str = ""  # blank = Documents\Scribe for Documents

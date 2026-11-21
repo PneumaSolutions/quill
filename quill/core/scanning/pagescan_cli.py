@@ -1,27 +1,37 @@
-"""Windows scanning through the open-source ``wia-scan`` command-line tool.
+"""Scanning on Windows and macOS through the ``pagescan`` command-line tool.
 
-``wia-scan.exe`` (Pneuma's open-scanner project, a single Rust executable
-over Windows Image Acquisition 2.0) does the COM work in its own process, so
-a driver that hangs or crashes takes the tool down, never QUILL. The contract,
-one JSON object on stdout per command:
+``pagescan`` (Pneuma Solutions, MIT, https://github.com/PneumaSolutions/pagescan)
+is one small executable with no runtime dependencies: Windows Image Acquisition
+(WIA 2.0, falling back to WIA 1.0) on Windows, Apple's ImageCaptureCore on
+macOS. It does the device work in its own process, so a driver that hangs or
+crashes takes the tool down, never QUILL -- and on macOS the process has its
+own main thread, which ImageCaptureCore needs. The contract (the tool's
+``docs/protocol.md``, version 1), one JSON object on stdout per command:
 
-* ``wia-scan list`` ->
-  ``{"ok": true, "scanners": [{"id": ..., "name": ..., "sources": [...]}]}``
-* ``wia-scan scan --device ID --dpi 300 --gray|--color --out DIR --format png``
-  -> ``{"ok": true, "files": [...], "error": null}``; writing ``cancel`` to
-  its stdin stops a running scan.
+* ``pagescan list`` ->
+  ``{"ok": true, "scanners": [{"id": ..., "name": ..., "sources":
+  [{"id": ..., "kind": "flatbed"|"feeder", "duplex": bool}]}]}``
+* ``pagescan scan --device ID --source flatbed|feeder --dpi 300 --gray|--color
+  --out DIR --format png`` -> ``{"ok": true, "files": [...], "error": null}``;
+  writing ``cancel`` to its stdin stops a running scan, keeping finished pages.
 
-On failure ``ok`` is false and ``error`` is a sentence written to be read
-aloud, which QUILL passes on. The tool runs with no console window
-(``CREATE_NO_WINDOW``, through :mod:`quill.stability.safe_subprocess`), with
-a timeout, and only from a worker thread.
+QUILL always names the source by kind (``--source flatbed`` or ``--source
+feeder``), never by a source ``id``: on Windows those ids can change between
+runs. On failure ``ok`` is false and ``error`` is a sentence written to be read
+aloud, which QUILL passes on. Lines on stderr are not part of the answer and are
+ignored. The tool runs with no console window (``CREATE_NO_WINDOW``, through
+:mod:`quill.stability.safe_subprocess`), with a timeout, and only from a worker
+thread.
 
-Where the tool is found, first match wins: the path in Options (Scanning
-tab, ``scanner_tool_path``), the ``QUILL_SCANNER_TOOL`` environment variable,
-``{app}/tools/scanner/wia-scan.exe`` beside an installed QUILL
-(``QUILL_APP_ROOT``), ``tools/scanner/wia-scan.exe`` in a source checkout,
-``<QUILL data>/tools/scanner/wia-scan.exe``, then ``PATH``. It is local-only:
-nothing here touches the network.
+Where the tool is found, first match wins: the path in Options (Scanning tab,
+``scanner_tool_path``, a file or a folder), the ``QUILL_SCANNER_TOOL``
+environment variable, ``{app}/tools/scanner/`` beside an installed QUILL
+(``QUILL_APP_ROOT``), ``Contents/Resources/tools/scanner/`` in a macOS app
+(``RESOURCEPATH``), ``tools/scanner/`` in a source checkout, ``<QUILL
+data>/tools/scanner/``, then ``PATH``. In each folder ``pagescan.exe`` (on a
+Mac, ``pagescan``) is looked for first, then the tool's old Windows name
+``wia-scan.exe``, so a computer set up before the rename keeps scanning. It is
+local-only: nothing here touches the network.
 """
 
 from __future__ import annotations
@@ -31,13 +41,16 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
 from quill.core.scanning.base import (
     COLOR_COLOR,
+    SOURCE_FEEDER,
+    SOURCE_FLATBED,
     CancelFn,
     ScanCancelled,
     ScanError,
@@ -49,43 +62,77 @@ from quill.core.scanning.base import (
 
 logger = logging.getLogger(__name__)
 
-TOOL_NAME = "wia-scan.exe"
+TOOL_STEM = "pagescan"
+#: The tool's name before 2026-11-21, still found so an existing install scans.
+LEGACY_TOOL_NAME = "wia-scan.exe"
 TOOL_ENV = "QUILL_SCANNER_TOOL"
 LIST_TIMEOUT_S = 120.0  # the first look for network (eSCL) scanners can be slow
 SCAN_TIMEOUT_S = 900.0
+#: The tool's own limit, a little inside QUILL's, so it stops cleanly and
+#: reports the pages it saved before QUILL has to kill it.
+TOOL_TIMEOUT_S = 870
 _POLL_S = 0.2
 
 MISSING_SENTENCE = (
-    "QUILL's scanner tool (wia-scan.exe) is not installed. Reinstall QUILL, or "
+    "QUILL's scanner tool (pagescan) is not installed. Reinstall QUILL, or "
     "set its location in Options, Scanning."
 )
 
 
-def find_tool(configured: str = "", *, environ: dict[str, str] | None = None) -> Path | None:
-    """The first ``wia-scan.exe`` that exists, or ``None``."""
-    env = os.environ if environ is None else environ
-    candidates: list[Path] = []
-    for value in (configured, env.get(TOOL_ENV, "")):
-        if value.strip():
-            candidates.append(Path(value.strip().strip('"')))
-    app_root = env.get("QUILL_APP_ROOT", "").strip()
-    if app_root:
-        candidates.append(Path(app_root) / "tools" / "scanner" / TOOL_NAME)
+def tool_names(platform: str | None = None) -> tuple[str, ...]:
+    """The file names the tool may have here, preferred first."""
+    if (platform or sys.platform) == "win32":
+        return (f"{TOOL_STEM}.exe", LEGACY_TOOL_NAME)
+    return (TOOL_STEM,)
+
+
+def _search_dirs(env: Mapping[str, str]) -> list[Path]:
+    dirs: list[Path] = []
+    for variable in ("QUILL_APP_ROOT", "RESOURCEPATH"):
+        root = env.get(variable, "").strip()
+        if root:
+            dirs.append(Path(root) / "tools" / "scanner")
     # A run from source: the gitignored tools/scanner folder of the checkout.
-    candidates.append(Path(__file__).resolve().parents[3] / "tools" / "scanner" / TOOL_NAME)
+    dirs.append(Path(__file__).resolve().parents[3] / "tools" / "scanner")
     try:
         from quill.core.paths import app_data_dir
 
-        candidates.append(app_data_dir() / "tools" / "scanner" / TOOL_NAME)
+        dirs.append(app_data_dir() / "tools" / "scanner")
     except Exception:  # noqa: BLE001 - no data folder: the other places still count
         pass
-    for candidate in candidates:
-        if candidate.is_dir():
-            candidate = candidate / TOOL_NAME
+    return dirs
+
+
+def find_tool(
+    configured: str = "",
+    *,
+    environ: Mapping[str, str] | None = None,
+    platform: str | None = None,
+) -> Path | None:
+    """The first ``pagescan`` (or legacy ``wia-scan.exe``) that exists, or ``None``."""
+    env: Mapping[str, str] = os.environ if environ is None else environ
+    names = tool_names(platform)
+    explicit = [
+        Path(value.strip().strip('"'))
+        for value in (configured, env.get(TOOL_ENV, ""))
+        if value.strip()
+    ]
+    for candidate in explicit:
         if candidate.is_file():
             return candidate
-    found = shutil.which("wia-scan")
-    return Path(found) if found else None
+        if candidate.is_dir():
+            for name in names:
+                if (candidate / name).is_file():
+                    return candidate / name
+    for folder in _search_dirs(env):
+        for name in names:
+            if (folder / name).is_file():
+                return folder / name
+    for name in names:
+        found = shutil.which(name)
+        if found:
+            return Path(found)
+    return None
 
 
 Runner = Callable[[list[str], float], tuple[int, str]]
@@ -99,7 +146,7 @@ def _run(args: list[str], timeout: float) -> tuple[int, str]:
 
 
 def parse_reply(stdout: str) -> dict[str, Any]:
-    """The tool's JSON answer: the last line that parses as an object."""
+    """The tool's JSON answer: the last stdout line that parses as an object."""
     for line in reversed((stdout or "").strip().splitlines()):
         line = line.strip()
         if not line.startswith("{"):
@@ -118,8 +165,12 @@ def _error_of(reply: dict[str, Any], fallback: str) -> str:
     return message or fallback
 
 
-class WiaCliBackend(ScannerBackend):
-    """:class:`ScannerBackend` over ``wia-scan.exe``."""
+def _kinds(sources: Any) -> set[str]:
+    return {str(s.get("kind", "")).lower() for s in sources or () if isinstance(s, dict)}
+
+
+class PagescanBackend(ScannerBackend):
+    """:class:`ScannerBackend` over the ``pagescan`` executable."""
 
     name = "the scanner tool"
 
@@ -163,21 +214,32 @@ class WiaCliBackend(ScannerBackend):
         for item in reply.get("scanners") or ():
             if not isinstance(item, dict) or not item.get("id"):
                 continue
-            sources = item.get("sources") or ()
-            feeder = any(
-                isinstance(s, dict) and str(s.get("kind", "")).lower() == "feeder" for s in sources
-            )
+            kinds = _kinds(item.get("sources"))
             scanners.append(
-                ScannerInfo(str(item["id"]), str(item.get("name") or "Scanner"), has_feeder=feeder)
+                ScannerInfo(
+                    str(item["id"]),
+                    str(item.get("name") or "Scanner"),
+                    has_feeder=SOURCE_FEEDER in kinds,
+                    # Sources unread (an "error" on this scanner): assume the glass.
+                    has_flatbed=SOURCE_FLATBED in kinds or not kinds,
+                )
             )
         return scanners
 
-    def scan_args(self, device_id: str, options: ScanOptions, out_dir: Path) -> list[str]:
+    def scan_args(
+        self,
+        device_id: str,
+        options: ScanOptions,
+        out_dir: Path,
+        source: str = SOURCE_FLATBED,
+    ) -> list[str]:
         return [
             str(self.tool()),
             "scan",
             "--device",
             device_id,
+            "--source",
+            SOURCE_FEEDER if source == SOURCE_FEEDER else SOURCE_FLATBED,
             "--dpi",
             str(options.dpi),
             "--color" if options.color == COLOR_COLOR else "--gray",
@@ -185,6 +247,8 @@ class WiaCliBackend(ScannerBackend):
             str(out_dir),
             "--format",
             "png",
+            "--timeout",
+            str(TOOL_TIMEOUT_S),
         ]
 
     def scan(
@@ -193,10 +257,11 @@ class WiaCliBackend(ScannerBackend):
         options: ScanOptions,
         out_dir: Path,
         *,
+        source: str = SOURCE_FLATBED,
         cancel_requested: CancelFn | None = None,
     ) -> list[Path]:
         out_dir.mkdir(parents=True, exist_ok=True)
-        args = self.scan_args(device_id, options, out_dir)
+        args = self.scan_args(device_id, options, out_dir, source)
         stdout = self._scan_process(args, cancel_requested)
         reply = parse_reply(stdout)
         files = [Path(str(f)) for f in reply.get("files") or () if str(f).strip()]
@@ -232,7 +297,7 @@ class WiaCliBackend(ScannerBackend):
                     raise ScanCancelled("Scan stopped.")
                 raise ScanError("The scan took too long and was stopped. Try again.")
             self._sleep(_POLL_S)
-        out, _err = process.communicate()
+        out, _err = process.communicate()  # stderr is never part of the answer
         if cancelled:
             raise ScanCancelled("Scan stopped.")
         if isinstance(out, bytes):
@@ -250,12 +315,15 @@ def _write_cancel(process: Any) -> None:
 
 
 __all__ = [
+    "LEGACY_TOOL_NAME",
     "LIST_TIMEOUT_S",
     "MISSING_SENTENCE",
     "SCAN_TIMEOUT_S",
     "TOOL_ENV",
-    "TOOL_NAME",
-    "WiaCliBackend",
+    "TOOL_STEM",
+    "TOOL_TIMEOUT_S",
+    "PagescanBackend",
     "find_tool",
     "parse_reply",
+    "tool_names",
 ]

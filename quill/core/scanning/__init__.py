@@ -1,8 +1,8 @@
 """Scanning in QUILL: a page from a flatbed or feeder scanner, as images or a PDF.
 
 wx-free. :mod:`.base` is the interface and its errors, :mod:`.session` the
-shared logic every caller uses, and :mod:`.wia_cli` (Windows) and
-:mod:`.imagecapture` (macOS) the two backends. The UI is
+shared logic every caller uses, and :mod:`.pagescan_cli` the backend on
+Windows and macOS (the ``pagescan`` command-line tool). The UI is
 ``quill/ui/main_frame_scanning.py``.
 """
 
@@ -14,6 +14,8 @@ from quill.core.scanning.base import (
     COLOR_MODES,
     DEFAULT_DPI,
     DPI_CHOICES,
+    SOURCE_FEEDER,
+    SOURCE_FLATBED,
     NoScannerFound,
     ScanCancelled,
     ScanError,
@@ -39,6 +41,8 @@ __all__ = [
     "DEFAULT_DPI",
     "DPI_CHOICES",
     "NO_SCANNER_SENTENCE",
+    "SOURCE_FEEDER",
+    "SOURCE_FLATBED",
     "NoScannerFound",
     "ScanCancelled",
     "ScanError",

@@ -232,7 +232,7 @@ class ScanningMixin:
         from quill.core.scanning import backend_for_platform
 
         tool = str(getattr(self.settings, "scanner_tool_path", "") or "")
-        return backend_for_platform(tool_path=tool, call_on_main=self._wx.CallAfter)
+        return backend_for_platform(tool_path=tool)
 
     def _scan_remembered_id(self) -> str:
         """The remembered scanner, unless Options cleared its name."""

@@ -2,7 +2,8 @@
 
 Options > Scanning: the default scanner (chosen with Tools > Choose
 Scanner, or the first time several are found), resolution, gray or color,
-and on Windows where the scanner tool lives. Cleaned here rather than inline
+and where the
+pagescan scanner tool lives. Cleaned here rather than inline
 in :meth:`quill.core.settings.Settings.from_dict` (GATE-11: that loader is at
 its size budget), the same way dictation's fields are.
 """

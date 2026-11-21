@@ -3855,7 +3855,7 @@
   {
     "id": "file.scan",
     "title": "Scan Pages...",
-    "body": "Scan pages from a flatbed or document-feeder scanner (File > Import > Scan Pages, or the QUILL key, then E with Shift). QUILL looks for scanners; with one it uses it, with several it asks once and remembers. After each page it asks Scan another page? Choose Yes for the next page or No when you are done. Then choose what to do with the pages: read the text with QUILL's own on-device OCR and open it, insert the page into this document as a picture, or save them as one PDF or as pictures. A network scanner can take half a minute a page; QUILL stays usable while it works. On Windows QUILL uses its scanner tool, wia-scan.exe; on a Mac it uses Image Capture.",
+    "body": "Scan pages from a flatbed or document-feeder scanner (File > Import > Scan Pages, or the QUILL key, then E with Shift). QUILL looks for scanners; with one it uses it, with several it asks once and remembers. After each page it asks Scan another page? Choose Yes for the next page or No when you are done. Then choose what to do with the pages: read the text with QUILL's own on-device OCR and open it, insert the page into this document as a picture, or save them as one PDF or as pictures. A network scanner can take half a minute a page; QUILL stays usable while it works. QUILL scans through its scanner tool, pagescan, on Windows and on a Mac.",
     "keystrokes": [
       "QUILL Key + Shift+E"
     ],
@@ -3870,7 +3870,7 @@
   {
     "id": "settings.scanning",
     "title": "Scanning settings",
-    "body": "Options > Scanning: Default scanner (scanner_device_name, set by Tools > Choose Scanner), Scan resolution (scanner_dpi, 300 dots per inch by default, best for reading text), Scan in gray or color (scanner_color, gray by default), and on Windows the Scanner tool location (scanner_tool_path; leave it blank to use the wia-scan.exe installed with QUILL).",
+    "body": "Options > Scanning: Default scanner (scanner_device_name, set by Tools > Choose Scanner), Scan resolution (scanner_dpi, 300 dots per inch by default, best for reading text), Scan in gray or color (scanner_color, gray by default), and the Scanner tool location (scanner_tool_path; leave it blank to use the pagescan tool installed with QUILL).",
     "user_guide_section": "working-with-different-document-types"
   },
   {

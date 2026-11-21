@@ -3,8 +3,8 @@
 Every place in QUILL that scans -- File > Import > Scan Pages, Insert Image, the
 Scribe for Documents wizard -- goes through this module:
 
-* :func:`backend_for_platform` picks the backend (``wia-scan`` on Windows,
-  ImageCaptureCore on macOS; anything else says scanning is not available).
+* :func:`backend_for_platform` picks the backend (the ``pagescan`` tool on
+  Windows and macOS; anything else says scanning is not available).
 * :func:`choose_scanner` applies the rule "one scanner: use it silently;
   several: ask once and remember" -- it returns the scanner to use, or
   ``None`` when the caller must ask.
@@ -20,11 +20,12 @@ from __future__ import annotations
 import shutil
 import sys
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 from quill.core.scanning.base import (
+    SOURCE_FLATBED,
     CancelFn,
     NoScannerFound,
     ScanError,
@@ -52,27 +53,19 @@ class UnsupportedPlatformBackend(ScannerBackend):
         options: ScanOptions,
         out_dir: Path,
         *,
+        source: str = SOURCE_FLATBED,
         cancel_requested: CancelFn | None = None,
     ) -> list[Path]:
         raise ScanError("Scanning is available in QUILL on Windows and macOS.")
 
 
-def backend_for_platform(
-    *,
-    tool_path: str = "",
-    call_on_main: Callable[[Callable[[], None]], None] | None = None,
-    platform: str | None = None,
-) -> ScannerBackend:
-    """The backend for this computer."""
+def backend_for_platform(*, tool_path: str = "", platform: str | None = None) -> ScannerBackend:
+    """The backend for this computer: ``pagescan`` on Windows and macOS."""
     name = platform or sys.platform
-    if name == "win32":
-        from quill.core.scanning.wia_cli import WiaCliBackend
+    if name in ("win32", "darwin"):
+        from quill.core.scanning.pagescan_cli import PagescanBackend
 
-        return WiaCliBackend(configured=tool_path)
-    if name == "darwin":
-        from quill.core.scanning.imagecapture import ImageCaptureBackend
-
-        return ImageCaptureBackend(call_on_main=call_on_main)
+        return PagescanBackend(configured=tool_path)
     return UnsupportedPlatformBackend()
 
 
@@ -157,7 +150,11 @@ class ScanSession:
         """Scan into a fresh sub-folder (so names never collide); return the new pages."""
         run = self.folder / f"run-{len(self.pages) + 1:03d}"
         new = self.backend.scan(
-            self.scanner.id, self.options, run, cancel_requested=cancel_requested
+            self.scanner.id,
+            self.options,
+            run,
+            source=self.scanner.preferred_source,
+            cancel_requested=cancel_requested,
         )
         self.pages.extend(new)
         return new

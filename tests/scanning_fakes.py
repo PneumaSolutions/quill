@@ -7,6 +7,7 @@ import zlib
 from pathlib import Path
 
 from quill.core.scanning.base import (
+    SOURCE_FLATBED,
     CancelFn,
     ScanError,
     ScannerBackend,
@@ -56,6 +57,7 @@ class FakeBackend(ScannerBackend):
         self.fail_with = fail_with
         self.pages_per_scan = pages_per_scan
         self.scans: list[tuple[str, ScanOptions, Path]] = []
+        self.sources: list[str] = []
 
     def list_scanners(self) -> list[ScannerInfo]:
         if self.fail_with is not None:
@@ -68,11 +70,13 @@ class FakeBackend(ScannerBackend):
         options: ScanOptions,
         out_dir: Path,
         *,
+        source: str = SOURCE_FLATBED,
         cancel_requested: CancelFn | None = None,
     ) -> list[Path]:
         if self.fail_with is not None:
             raise self.fail_with
         self.scans.append((device_id, options, out_dir))
+        self.sources.append(source)
         out_dir.mkdir(parents=True, exist_ok=True)
         pages = []
         for number in range(1, self.pages_per_scan + 1):

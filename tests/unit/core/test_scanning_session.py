@@ -90,11 +90,11 @@ def test_a_pdf_with_no_pages_is_refused(tmp_path) -> None:
 
 
 def test_platforms_get_their_backend() -> None:
-    from quill.core.scanning.imagecapture import ImageCaptureBackend
-    from quill.core.scanning.wia_cli import WiaCliBackend
+    from quill.core.scanning.pagescan_cli import PagescanBackend
 
-    assert isinstance(scanning.backend_for_platform(platform="win32"), WiaCliBackend)
-    assert isinstance(scanning.backend_for_platform(platform="darwin"), ImageCaptureBackend)
+    # One backend, the pagescan tool, on both platforms.
+    assert isinstance(scanning.backend_for_platform(platform="win32"), PagescanBackend)
+    assert isinstance(scanning.backend_for_platform(platform="darwin"), PagescanBackend)
     other = scanning.backend_for_platform(platform="linux")
     assert isinstance(other, UnsupportedPlatformBackend)
     with pytest.raises(scanning.ScanError, match="Windows and macOS"):
@@ -113,3 +113,17 @@ def test_file_helpers(tmp_path) -> None:
     assert session.folder_is_writable(tmp_path)
     (tmp_path / "a.pdf").write_text("x")
     assert session.unique_path(tmp_path, "a", ".pdf").name == "a (2).pdf"
+
+
+def test_the_session_asks_for_the_flatbed_or_else_the_feeder(tmp_path) -> None:
+    glass = scanning.ScannerInfo("a", "Flatbed and feeder", has_feeder=True)
+    feeder_only = scanning.ScannerInfo("b", "Sheet feeder", has_feeder=True, has_flatbed=False)
+    assert glass.preferred_source == scanning.SOURCE_FLATBED
+    assert feeder_only.preferred_source == scanning.SOURCE_FEEDER
+    backend = FakeBackend([glass, feeder_only])
+    for scanner in (glass, feeder_only):
+        session = scanning.ScanSession(
+            backend, scanner, scanning.ScanOptions(), folder=tmp_path / scanner.id
+        )
+        session.scan_next()
+    assert backend.sources == [scanning.SOURCE_FLATBED, scanning.SOURCE_FEEDER]

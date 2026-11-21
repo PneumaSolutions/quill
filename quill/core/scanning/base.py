@@ -6,9 +6,8 @@ remembering it, scanning more pages, turning pages into one PDF -- is
 :mod:`quill.core.scanning.session`, written once over this interface, so a
 fake backend is all a test needs.
 
-Backends: :mod:`~quill.core.scanning.wia_cli` (Windows, the open-source
-``wia-scan`` command-line tool) and :mod:`~quill.core.scanning.imagecapture`
-(macOS, Apple's ImageCaptureCore through PyObjC).
+The backend on Windows and macOS is :mod:`~quill.core.scanning.pagescan_cli`,
+over Pneuma Solutions' open-source ``pagescan`` command-line tool.
 """
 
 from __future__ import annotations
@@ -30,6 +29,10 @@ COLOR_MODES: tuple[tuple[str, str], ...] = (
 )
 DPI_CHOICES: tuple[int, ...] = (150, 200, 300, 400, 600)
 DEFAULT_DPI = 300
+
+#: Where the paper is: on the glass or in the document feeder.
+SOURCE_FLATBED = "flatbed"
+SOURCE_FEEDER = "feeder"
 
 
 class ScanError(CodedError):
@@ -70,6 +73,14 @@ class ScannerInfo:
     id: str
     name: str
     has_feeder: bool = False
+    has_flatbed: bool = True
+
+    @property
+    def preferred_source(self) -> str:
+        """The flatbed when there is one, else the feeder."""
+        if self.has_flatbed or not self.has_feeder:
+            return SOURCE_FLATBED
+        return SOURCE_FEEDER
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,7 +107,7 @@ class ScannerBackend(ABC):
     """What a platform's scanning code provides. Methods block; call them
     from a worker thread, never the UI thread."""
 
-    #: Spoken in errors ("the scanner tool", "Image Capture").
+    #: Spoken in errors ("the scanner tool").
     name: str = "scanner"
 
     @abstractmethod
@@ -110,9 +121,11 @@ class ScannerBackend(ABC):
         options: ScanOptions,
         out_dir: Path,
         *,
+        source: str = SOURCE_FLATBED,
         cancel_requested: CancelFn | None = None,
     ) -> list[Path]:
-        """Scan what is on the glass (or in the feeder) into *out_dir*.
+        """Scan what is on the glass (``source`` :data:`SOURCE_FLATBED`) or in
+        the feeder (:data:`SOURCE_FEEDER`) into *out_dir*.
 
         Returns the image files written, one per page, in page order.
         Raises :class:`ScanError` (or :class:`ScanCancelled`).
@@ -125,6 +138,8 @@ __all__ = [
     "COLOR_MODES",
     "DEFAULT_DPI",
     "DPI_CHOICES",
+    "SOURCE_FEEDER",
+    "SOURCE_FLATBED",
     "CancelFn",
     "NoScannerFound",
     "ScanCancelled",
