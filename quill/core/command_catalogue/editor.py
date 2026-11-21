@@ -19,6 +19,7 @@ from __future__ import annotations
 from quill.core.command_catalogue.editor_agents import AGENT_ROWS
 from quill.core.command_catalogue.editor_github_line import GITHUB_LINE_ROWS
 from quill.core.command_catalogue.editor_never import NEVER_ROWS
+from quill.core.command_catalogue.editor_scribe import SCRIBE_ROWS
 from quill.core.command_catalogue.spec import Arg, ArgKind, CommandSpec, Kind, Risk
 
 __all__ = ["EDITOR_ROWS"]
@@ -383,4 +384,6 @@ _REVIEWED: tuple[CommandSpec, ...] = (
 )
 
 #: Every QUILL row: the agents' list first, in its old order, then the rest.
-EDITOR_ROWS: tuple[CommandSpec, ...] = AGENT_ROWS + _REVIEWED + GITHUB_LINE_ROWS + NEVER_ROWS
+EDITOR_ROWS: tuple[CommandSpec, ...] = (
+    AGENT_ROWS + _REVIEWED + GITHUB_LINE_ROWS + NEVER_ROWS + SCRIBE_ROWS
+)

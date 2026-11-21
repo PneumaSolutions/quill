@@ -415,6 +415,9 @@ from quill.ui.main_frame_rich_mode import RichModeMixin
 from quill.ui.main_frame_rich_paragraph import RichParagraphMixin
 from quill.ui.main_frame_say_check import SayCheckMixin
 from quill.ui.main_frame_say_commands import SayCommandsAdapterMixin
+from quill.ui.main_frame_scanning import ScanningMixin
+from quill.ui.main_frame_scribe import ScribeDocumentsMixin
+from quill.ui.main_frame_scribe_queue import ScribeQueueMixin
 from quill.ui.main_frame_search import SearchCommandsMixin
 from quill.ui.main_frame_section_move import SectionMoveMixin
 from quill.ui.main_frame_selection import SelectionMarksMixin
@@ -686,6 +689,9 @@ class MainFrame(
     MediaPlayerMixin,
     GlowFileMixin,
     DocConvertMixin,
+    ScribeDocumentsMixin,  # Tools > Scribe for Documents, Scribe PRD 8.1
+    ScribeQueueMixin,  # the family queue, who speaks, and results, Scribe PRD 7.4
+    ScanningMixin,  # File > Import > Scan Pages, shared by every caller that scans
     PdfOpenOcrMixin,
     DictationHotkeysMixin,
     # QUILL's own free AI: the shared hosted-AI commands, five, none implemented here.

@@ -32,6 +32,7 @@ from quill.core.keymap_query import (
     find_keymap_conflicts,
 )
 from quill.core.paths import app_data_dir
+from quill.core.scribe.keys import default_bindings as scribe_key_bindings
 from quill.core.storage import read_json, write_json_atomic
 from quill.core.wordpress.keys import default_bindings as wordpress_key_bindings
 
@@ -628,6 +629,8 @@ DEFAULT_KEYMAP: dict[str, str] = {
     # editing-loop verb -- and Ctrl+Shift+I is where Insert Image goes, so
     # Ctrl+Alt+I can be Insert Markdown Tag as it is in QUILL Lite.
     "tools.document_intake_report": "Ctrl+Shift+Grave, Shift+I",  # I = Intake
+    # Scan Pages: a free leader key; the main table has nothing left (rule 9).
+    "file.scan": "Ctrl+Shift+Grave, Shift+E",
     # #357 keymap consolidation: AI commands move from inline F7/Shift+F7/F8/ Shift+F8/Ctrl+Shift+T
     # accelerators (which collided with the selection bindings at F8/Shift+F8/Ctrl+F8) to
     # Ctrl+Alt+Shift+ chords, matching the EdSharp port convention. The chord class is reserved for
@@ -1346,6 +1349,7 @@ DEFAULT_KEYMAP: dict[str, str] = {
     # The WordPress keys (wordpress.md 19): Ctrl+Alt+Shift+Grave, then one letter, the
     # same in QUILL Lite, from wordpress/menu.py LAYER_KEYS and forms/menu.py's F.
     **wordpress_key_bindings(),
+    **scribe_key_bindings(),  # Scribe for Documents: quill/core/scribe/keys.py
 }
 
 

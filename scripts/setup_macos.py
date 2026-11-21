@@ -160,9 +160,26 @@ def _doc_files() -> list[tuple[str, list[str]]]:
     return files
 
 
+#: The scanner tool (pagescan, Pneuma Solutions, MIT): py2app copies it to
+#: Contents/Resources/tools/scanner, where quill/core/scanning/pagescan_cli.py
+#: finds it through RESOURCEPATH. It is a prebuilt universal binary, not built
+#: here: put it at tools/scanner/pagescan in the checkout (gitignored), from the
+#: pagescan GitHub release or `cargo build --release` in PneumaSolutions/pagescan.
+#: build_macos.sh marks it executable and signs it. Without it the app is built
+#: anyway and Scan Pages says the scanner tool is missing.
+_SCANNER_TOOL = _REPO_ROOT / "tools" / "scanner" / "pagescan"
+
+
+def _scanner_files() -> list[tuple[str, list[str]]]:
+    if not _SCANNER_TOOL.is_file():
+        print(f"WARNING: no scanner tool at {_SCANNER_TOOL}; this build cannot scan.")
+        return []
+    return [("tools/scanner", [str(_SCANNER_TOOL)])]
+
+
 setup(
     app=APP,
-    data_files=_doc_files(),
+    data_files=_doc_files() + _scanner_files(),
     options={"py2app": OPTIONS},
     setup_requires=["py2app"],
 )

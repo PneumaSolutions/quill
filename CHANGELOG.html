@@ -244,6 +244,85 @@
 <main id="main-content" tabindex="-1">
 <h1 id="changelog">Changelog</h1>
 <h2 id="100">1.0.0</h2>
+<h3 id="scanning-on-windows-and-macos-with-pagescan-2026-11-21">Scanning
+on Windows and macOS with pagescan (2026-11-21)</h3>
+<ul>
+<li><strong>File &gt; Import &gt; Scan Pages uses one scanner tool on
+both systems.</strong> QUILL now scans through pagescan, Pneuma
+Solutions’ small open-source scanner tool (MIT), on Windows and on a
+Mac. It is installed with QUILL in its tools\scanner folder and works
+with USB scanners and network (AirScan/eSCL) scanners. On a Mac it
+replaces the earlier Image Capture code, so QUILL no longer needs the
+pyobjc-framework-ImageCaptureCore package.</li>
+<li><strong>The glass or the feeder.</strong> A scanner with both a
+glass and a document feeder asks which to scan from, and offers your
+last answer first; one with only a feeder scans from the feeder. QUILL
+always asks for the glass or the feeder by name, so a scanner whose
+parts are numbered differently from one day to the next still
+scans.</li>
+<li><strong>An existing install keeps scanning.</strong> On Windows
+QUILL still finds the tool under its old name, wia-scan.exe, until
+pagescan.exe is installed beside it. Options &gt; Scanning, Scanner tool
+location, now works on a Mac too, and takes a file or a folder.</li>
+<li><strong>Builds bundle the tool.</strong> The Windows build copies
+pagescan.exe into tools\scanner (<code>--scanner-tool</code>, or
+tools\scanner\pagescan.exe in the checkout) and the Mac build puts
+pagescan in the app and signs it. pagescan is listed in the third-party
+notices.</li>
+<li><strong>Safer sign-in, scanning and downloads.</strong> A security
+review of Scribe for Documents and scanning
+(docs/design/scribe-security-review.md) made five changes. The Scribe
+sign-in now checks a random code that comes back with the browser’s
+answer, so another program cannot end or take over your sign-in. QUILL
+only runs its own copy of pagescan or the one you choose by its full
+path in Options; it never runs one found elsewhere on the computer. It
+only takes scanned pages from the folder it gave the tool. A file Scribe
+sends can no longer be named CON, NUL or another name Windows keeps for
+devices. Convert from a Link only accepts web addresses that start with
+http:// or https://. About QUILL now says “Powered by Scribe for
+Documents”.</li>
+<li><strong>Scribe for Documents is steadier, after an independent
+review.</strong> The review and what was done about each finding are in
+docs/design/scribe-security-review.md. Two QUILL apps can no longer send
+the same document twice. A download that stops early is resumed rather
+than saved short, and a leftover part of an older download is never
+mixed in. An unexpected error is tried again a few times, each after a
+longer wait, and then the job says it did not finish and offers Retry;
+it no longer downloads a new copy every second. Jobs paused because your
+sign-in ended carry on when you sign in again. A conversion that
+finished while QUILL was reconnecting is downloaded instead of waited
+for. Running out of pages offers Buy Pages, and when Scribe asks QUILL
+to slow down it waits a little longer each time and says so once. A
+password no longer skips Send Next File. A damaged or locked queue file
+is never written over. Titles with a full stop, such as “1.
+Introduction”, keep their whole name for their folder. The sign-in can
+no longer be held up by another program connecting to it.</li>
+<li><strong>Fewer surprises for screen reader users.</strong> The Scribe
+Conversions details field is only rewritten when its text changes, so
+your place in it is kept. The reason Describe the pictures starts off
+when AI is turned off is in the “What will be sent” field, which Tab
+reaches. A finished result no longer opens in a new tab while you are
+typing. Pressing Escape after scanning asks before throwing the pages
+away, and cancelling a save goes back to the choices. When both Scribe
+for Documents and Datalab cloud OCR are set up, the offer after a weak
+OCR result lists both. Options &gt; Scanning can only point at a
+pagescan on this computer, never a network share, and the bundled copy
+is always used when it is there; a shared settings file no longer
+carries that path.</li>
+<li><strong>The rest of the review is fixed too.</strong> A result is
+said and opened in the QUILL app that started it, even when another app
+did the work. When the internet drops, QUILL keeps trying for up to two
+hours, shows when it will try next, and resumes an interrupted upload
+without sending the document twice. A wrong PDF password stays selected
+in the same box, with the tries left said. When your pages run out, Open
+Preview opens the free first two pages on Scribe’s website. Large files
+are sent straight from disk, scans with many pages are saved as a PDF
+one page at a time, and a long feeder scan can no longer stall. My
+Scribe Documents never shows an old list under Trash, and its dates read
+as dates. Links are named by their file name, finished jobs leave Scribe
+Conversions after 30 days, and a downloaded file always gets the right
+extension for its format.</li>
+</ul>
 <h3
 id="more-settings-that-stick-studio-media-player-transcribe-beacon-weather-radio-and-quills-dialogs-2026-11-20">More
 settings that stick: Studio, Media Player, Transcribe, Beacon, Weather,

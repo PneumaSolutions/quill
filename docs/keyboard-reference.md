@@ -11,7 +11,7 @@ chords: press Ctrl+Shift+Grave, release, then the second key. Every
 binding here is a *default* -- the in-app reference (Help > Open
 Keyboard Reference) always shows your own customised keymap.
 
-Editor commands with default bindings: 596.
+Editor commands with default bindings: 612.
 
 ## The QUILL editor
 
@@ -47,6 +47,7 @@ Editor commands with default bindings: 596.
 | Ctrl+W | Close Document | `file.close_document` |
 | QUILL Key + B | Batch conversion | `file.batch_conversion` |
 | QUILL Key + G | Open From Favorite Folder... | `file.open_from_favorite_folder` |
+| QUILL Key + Shift+E | Scan Pages... | `file.scan` |
 | QUILL Key + Shift+F | Add Current Folder to Favorites | `file.add_favorite_folder` |
 | QUILL Key + Shift+X | Remove Favorite Folder... | `file.remove_favorite_folder` |
 
@@ -535,6 +536,17 @@ Editor commands with default bindings: 596.
 | (unbound by default) | Play favorite 8 | `radio.play_favorite_8` |
 | (unbound by default) | Play favorite 9 | `radio.play_favorite_9` |
 | (unbound by default) | Internet Radio: Sound Enhancements... | `radio.sound_enhancements` |
+| (unbound by default) | About Scribe for Documents | `scribe.about` |
+| (unbound by default) | Open My Scribe Account in Browser | `scribe.account` |
+| (unbound by default) | Translate with Scribe for Documents... | `scribe.braille` |
+| (unbound by default) | Convert This Document... | `scribe.convert_document` |
+| (unbound by default) | Convert from a Link... | `scribe.convert_link` |
+| (unbound by default) | Export with Scribe for Documents... | `scribe.export` |
+| (unbound by default) | Import / Convert with Scribe for Documents... | `scribe.import` |
+| (unbound by default) | My Scribe Documents | `scribe.my_documents` |
+| (unbound by default) | Options... | `scribe.options` |
+| (unbound by default) | Sign In... | `scribe.sign_in` |
+| (unbound by default) | Sign Out | `scribe.sign_out` |
 | (unbound by default) | Story Studio... | `story.open_studio` |
 | (unbound by default) | Sync Folder with GitHub... | `sync.sync_folder` |
 | (unbound by default) | Delete Column | `table.delete_column` |
@@ -649,9 +661,13 @@ Editor commands with default bindings: 596.
 | QUILL Key + 9 | Radio: Mute/Unmute | `radio.mute_toggle` |
 | QUILL Key + K | Stop Agent | `project.stop_agent` |
 | QUILL Key + M | Paste html as markdown | `power.paste_html_as_markdown` |
+| QUILL Key + Shift+B | Convert a File... | `scribe.convert_file` |
 | QUILL Key + Shift+G or Ctrl+Alt+Shift+Home | Snippet Gallery... | `power.open_snippet_gallery` |
 | QUILL Key + Shift+M | Toggle Meeting Mode | `verbosity.toggle_meeting` |
 | QUILL Key + Shift+Q | Toggle Quiet Mode | `verbosity.toggle_quiet` |
+| QUILL Key + Shift+U | Scribe Status | `scribe.status` |
+| QUILL Key + Shift+W | Conversions | `scribe.conversions` |
+| QUILL Key + Shift+Y | Repeat Last Scribe Message | `scribe.repeat` |
 | QUILL Key + Shift+Z | Undo Verbosity Change | `verbosity.undo` |
 | QUILL Key + U | Undo Last Agent Turn | `project.undo_turn` |
 | S | QUILL Quick Nav: Sentence | `quill.quick_nav.sentence` |

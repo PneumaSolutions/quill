@@ -22,7 +22,7 @@ from quill.core.inline_image_alt import (
 class ImageAltMixin:
     """Insert Image (mandatory alt text) and Describe Image at Cursor."""
 
-    def insert_image(self) -> None:
+    def insert_image(self, initial_path: str = "") -> None:
         if self._document_is_read_only():
             self._set_status("Document is read-only")
             return
@@ -41,6 +41,7 @@ class ImageAltMixin:
             announce_cb=self._announce,
             html_mode=(surface == "html"),
             ai_suggest_cb=ai_cb,
+            initial_path=initial_path,
         )
         request = dlg.show_request()
         dlg.close()

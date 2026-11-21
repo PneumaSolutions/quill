@@ -82,6 +82,25 @@ never uploads anything.
   (stored in the Windows credential vault, never in settings files), choose
   a default mode, and press Test Connection.
 
+## Scribe for Documents (cloud, optional, consent-gated)
+
+- **What it does:** converts a PDF (password-protected ones too), a scan or
+  photo, an Office or OpenDocument file, an e-book, a text file or a web page
+  into accessible HTML (opened in QUILL for editing), Word, tagged PDF, EPUB,
+  DAISY, MP3, braille (BRF), offline HTML or MOBI. It is run by Pneuma
+  Solutions at scribeit.io.
+- **Best for:** turning a document into the format you want to read it in,
+  including audio and braille, not only into editable text.
+- **Local or cloud?** Cloud. QUILL asks for your consent before every
+  conversion, and the document is kept in your Scribe library, where you can
+  delete it. QUILL speaks every status update Scribe sends.
+- **Cost:** your own Scribe page credits or subscription.
+- **Setup:** Tools > Reading and Dictation > OCR and Document Conversion >
+  Sign In to Scribe for Documents. The sign-in happens on Scribe's own page in
+  your browser; QUILL never sees your password.
+
+Powered by Scribe for Documents.
+
 ## The one rule
 
 Free first, local first, and nothing is ever uploaded without asking you.

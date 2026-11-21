@@ -138,6 +138,11 @@ class PlayerAddressMixin:
             if is_web_address(argument):
                 return self._open_address(argument)
             path = Path(argument)
+            if path.is_file() and path.suffix.lower() == ".ncx":
+                # A DAISY book's navigation file opens with its chapters, no
+                # picker (Scribe PRD 8.3: QUILL sends Scribe's DAISY here).
+                self._load_daisy(path)  # type: ignore[attr-defined]
+                return True
             if path.is_file():
                 self._load_book(path)
                 return True

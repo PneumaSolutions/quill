@@ -2022,7 +2022,7 @@
       "license_label": "BSD-3-Clause",
       "copyright": "Copyright (c) Aymeric Augustin and contributors",
       "homepage": "https://github.com/python-websockets/websockets",
-      "what": "WebSocket connections for live transcription.",
+      "what": "WebSocket connections: live transcription, and in QUILL, Scribe for Documents' document channel.",
       "products": [
         "all"
       ],
@@ -3072,6 +3072,23 @@
         "quill",
         "quilllite",
         "runtime"
+      ],
+      "delivery": "bundled"
+    },
+    {
+      "id": "pagescan",
+      "name": "pagescan (pagescan.exe)",
+      "group": "runtime",
+      "version": "0.1.0",
+      "licenses": [
+        "MIT"
+      ],
+      "license_label": "MIT",
+      "copyright": "Copyright (c) 2026 Pneuma Solutions",
+      "homepage": "https://github.com/PneumaSolutions/pagescan",
+      "what": "Scans pages from flatbed and document-feeder scanners for File > Import > Scan Pages (Windows Image Acquisition on Windows, ImageCaptureCore on macOS). Run as a separate, unmodified program from tools\\scanner beside QUILL. The licences of the Rust crates built into it are in the project's THIRD-PARTY-LICENSES.html.",
+      "products": [
+        "quill"
       ],
       "delivery": "bundled"
     },

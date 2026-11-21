@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc 3.12.1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Scribe for Documents in QUILL: implementation notes</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      color: light-dark(#1a1a1a, #fdfdfd);
+      background-color: #fdfdfd;
+      background-color: light-dark(#fdfdfd, #1a1a1a);
+      color-scheme: light dark;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        color-scheme: light only;
+      }
+      html, body, pre, code {
+        background-color: transparent;
+      }
+      body, a, a:visited, blockquote {
+        color: black;
+      }
+      pre, code {
+        padding: 0;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a, a:visited {
+      color: inherit;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid;
+      border-color: #e6e6e6;
+      border-color: light-dark(#e6e6e6, #4c4c4c);
+      color: #606060;
+      color: light-dark(#606060, #b6b6b6);
+    }
+    code {
+      white-space: pre-wrap;
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid currentColor;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid currentColor;
+      border-bottom: 1px solid currentColor;
+    }
+    th {
+      border-top: 1px solid currentColor;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: 1.5em;}
+    div.column{flex: auto;}
+    @media screen {
+    div.columns{gap: min(4vw, 1.5em);}
+    div.column{overflow-x: auto;}
+    }
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+  </style>
+  <style>
+    /* Accessible skip link: off-screen until it receives keyboard focus. */
+    .skip-link {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      background: #ffffff;
+      color: #1a1a1a;
+      padding: 0.5em 1em;
+      border: 2px solid #1a1a1a;
+      z-index: 1000;
+    }
+    .skip-link:focus { left: 0; }
+    /* The skip link above targets main, and a focusable main needs a ring for
+       the sighted keyboard user. These pages load no external stylesheet, so it
+       has to be inline; the colour is the site theme's --focus, hardcoded
+       because there is no token here. :focus-visible, not :focus -- tabindex="-1"
+       makes main the click-focus target for every paragraph inside it, so
+       :focus would box the whole page on any ordinary click. The offset is inset
+       because main is full-bleed and an outset ring gets clipped into two
+       vertical lines. */
+    main[tabindex="-1"]:focus-visible {
+      outline: 3px solid #b8540a;
+      outline-offset: -3px;
+    }
+    /* WCAG AA overrides (>= 4.5:1 on the light code background) for the
+       low-contrast default syntax-highlight token colors. */
+    code span.al, code span.er { color: #c00000; }
+    code span.an, code span.co, code span.cv { color: #5a5a5a; }
+    code span.ss { color: #8a3a5a; }
+    /* Pandoc's own styles.html partial, injected near the top of this template,
+       ships `table { display: block; overflow-x: auto; }`. display: block takes
+       the table role out of the accessibility tree in Blink and Gecko, and the
+       row and cell roles go with it, so every rendered table reads as a flat run
+       of words -- 62 of them in QUILL Lite's user guide alone, all of them
+       keyboard reference tables, on a site whose readers are overwhelmingly
+       screen-reader users. Restoring display: table is not a preference.
+
+       The scroll affordance it was there for is given up rather than moved,
+       because Pandoc emits a bare table with no wrapper element to hang overflow
+       on -- the wrapper pattern compare.html uses is not available here. So the
+       exchange is a certain and total loss of table semantics against a possible
+       sideways page scroll on the widest tables, and the cells are taught to
+       break so that stays possible rather than likely.
+
+       This override also covers the governance pages built by
+       .github/workflows/github-pages.yml, which installs Pandoc from apt at a
+       version nobody pins -- whatever styles.html that ships, this wins. */
+    table {
+      display: table;
+      overflow-x: visible;
+    }
+    table th,
+    table td {
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+<a class="skip-link" href="#main-content">Skip to main content</a>
+<main id="main-content" tabindex="-1">
+<h1 id="scribe-for-documents-in-quill-implementation-notes">Scribe for
+Documents in QUILL: implementation notes</h1>
+<p>The specification is Jeff Bishop’s Scribe PRD (“Scribe for Documents
+in the QUILL family”, 2026-11-20). This note records how QUILL’s Phase 1
+build maps onto it, where the real service behaves differently from what
+the PRD could know, and what is left. The user-facing description is in
+Chapter 3 of the user guide, under “Converting with Scribe for
+Documents”.</p>
+<h2 id="where-the-code-is">Where the code is</h2>
+<p>Shared foundation, <code>quill/core/scribe/</code> (wx-free, each
+module under 600 lines):</p>
+<ul>
+<li><code>model.py</code>: formats, build order, stages, settings
+groups, <code>DocumentSettings</code>, and the section 11 errors
+(<code>QUILL-SCRIBE-SIGNIN</code>, <code>-PAGES</code>,
+<code>-PASSWORD</code>, <code>-BUSY</code>, <code>-GONE</code>,
+<code>-OFFLINE</code>, <code>-SIGNIN-LOCAL</code>, <code>-SAVE</code>,
+<code>-OFF</code>, <code>-FAILED</code>).</li>
+<li><code>http.py</code>: the one <code>urllib</code> door every REST
+call goes through (GATE-9).</li>
+<li><code>auth.py</code>: PKCE sign-in, the loopback listener, tokens in
+the secret vault.</li>
+<li><code>client.py</code>: the REST API. <code>channel.py</code>: the
+Phoenix channel.</li>
+<li><code>queue.py</code> and <code>runner.py</code>: the family queue
+and the one runner.</li>
+<li><code>library.py</code>: download folders and which document made
+which file.</li>
+<li><code>consent.py</code>: the Convert dialog’s wording;
+<code>settings_fields.py</code>: Options; <code>keys.py</code>: the four
+default keys.</li>
+</ul>
+<p>QUILL’s surfaces: <code>quill/ui/main_frame_scribe.py</code>
+(commands, menus, entry points), <code>main_frame_scribe_queue.py</code>
+(runner, speech, results), and the windows
+<code>scribe_signin_dialog.py</code>,
+<code>scribe_convert_dialog.py</code> with
+<code>scribe_settings_panel.py</code>,
+<code>scribe_conversions_window.py</code> and
+<code>scribe_documents_dialog.py</code>. Tests run QUILL’s real client
+against <code>tests/scribe_fake_server.py</code>, a real HTTP and
+WebSocket fake.</p>
+<h2 id="where-the-real-service-differs-from-the-prd">Where the real
+service differs from the PRD</h2>
+<p>Read from Pneuma’s server and client source on 2026-11-21.</p>
+<ul>
+<li><p><strong>Redirect path.</strong> QUILL’s approved registration is
+<code>http://127.0.0.1:47613/callback</code>. The server ignores the
+port for a loopback address but matches the path exactly, so QUILL
+listens on any free port at <code>/callback</code>, not
+<code>/scribe/callback</code>.</p></li>
+<li><p><strong>Accessible HTML.</strong> The API does not hand out the
+<code>html</code> output for download. QUILL converts
+<code>offline_html</code> (the same document with its pictures), unpacks
+it next to the other results, and opens its page.</p></li>
+<li><p><strong>Repeat formats are free.</strong> Pages are charged once
+per document, for its first full conversion; the dialog’s “already made,
+no pages used” is right, and so is “further formats are free”.</p></li>
+<li><p><strong>DAISY</strong> is DAISY 3 (an NCX), which Media Player
+already reads.</p></li>
+<li><p><strong>Rate limit.</strong> Uploads and
+<code>start_conversion</code> share one bucket of 10 a minute per
+person, so a job asks the REST API whether a format is already made
+before starting it.</p></li>
+<li><p><strong>Pages left</strong> come from <code>/api/billing</code>;
+<code>/api/account_info</code> has no count.</p></li>
+<li><p><strong>Logging.</strong> <code>websockets</code> logs the
+request line (with the token) and every frame (with a PDF password) at
+DEBUG; QUILL gives it a logger held at WARNING.</p></li>
+<li><p><strong>Accessible HTML and the offline page are the same
+file.</strong> Both come from the <code>offline_html</code> output,
+which Scribe sends as one self-contained HTML file (pictures inline),
+not a zip. QUILL downloads it once for both.</p></li>
+<li><p><strong>MP3 is one <code>.mp3</code></strong>; DAISY is a zip of
+a DAISY 3 book (<code>dtb.ncx</code>, <code>dtb.opf</code>,
+<code>dtbook.xml</code>, SMIL and numbered MP3s).</p></li>
+<li><p><strong>Word results use
+<code>w:jc w:val="start"</code></strong>, which python-docx cannot map;
+QUILL’s rich Word read used to fail on every Scribe result (fixed in
+<code>docx_reader.py</code>).</p></li>
+<li><p><strong>Voice samples</strong> are public at
+<code>/sounds/tts-samples/&lt;short name&gt;.mp3</code>. The voice
+list’s third field says whether one exists (43 of 84 US English voices
+on 2026-11-21); the others answer 404.</p></li>
+<li><p><strong>A wrong PDF password after upload</strong> comes back as
+an <code>ok</code> reply to <code>start_conversion</code> followed by an
+<code>error</code> event, <code>invalid_password</code>.</p></li>
+</ul>
+<h2 id="live-runs-2026-11-21-mikes-account-on-the-hp">Live runs
+(2026-11-21, Mike’s account, on the HP)</h2>
+<p>Driven by QUILL’s own <code>QueueRunner</code>,
+<code>ScribeClient</code> and <code>DocumentChannel</code>, unmodified,
+from a script (<code>~/work/hp/scribe_live.py</code> on the Spark) with
+a private queue folder so the running QUILL never saw the jobs. Every
+test document was moved to Trash and deleted forever afterwards.</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Formats</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A real PDF (the NVIDIA model licence, 2 pages to Scribe)</td>
+<td>all nine</td>
+<td>All made and downloaded in 123 s: HTML, Word, tagged PDF 1.7, EPUB,
+MOBI, BRF, offline page, MP3 (8 MB), DAISY 3 zip</td>
+</tr>
+<tr>
+<td>The scanned page <code>test-scan.png</code></td>
+<td>all nine</td>
+<td>All made in 45 s; OCR text correct, including the Arabic line</td>
+</tr>
+<tr>
+<td>Password-protected PDF</td>
+<td>Word</td>
+<td><code>password_required</code> waited for the person; a wrong
+password was refused; the right one converted</td>
+</tr>
+<tr>
+<td>A link to a public PDF</td>
+<td>Word, HTML</td>
+<td>Made in 15 s, nothing uploaded from the PC</td>
+</tr>
+<tr>
+<td>Export with Scribe (a QUILL document saved as Word first)</td>
+<td>tagged PDF, MOBI, Word</td>
+<td>All made</td>
+</tr>
+<tr>
+<td>Braille &gt; Translate with Scribe</td>
+<td>BRF</td>
+<td>Made; UEB grade 2, 40 cells</td>
+</tr>
+<tr>
+<td>Per-document settings (1.5x speech, 32 cells, large print)</td>
+<td>BRF, MP3</td>
+<td>Made with the settings sent</td>
+</tr>
+<tr>
+<td>Two jobs at once</td>
+<td>several</td>
+<td>Hit <code>rate_limited</code>; QUILL said “asked QUILL to slow down”
+once and carried on after a minute</td>
+</tr>
+<tr>
+<td>Play Sample (<code>VoiceSample</code> in a real wx window)</td>
+<td></td>
+<td>Sample fetched (220 KB), played through the shared engine,
+stopped</td>
+</tr>
+</tbody>
+</table>
+<p>The Word results open in QUILL’s rich editor with no fidelity warning
+(no comments, tracked changes or headers flagged). Each run used one to
+two pages; 7286 pages before, 7276 after.</p>
+<h2 id="phase-1-done">Phase 1: done</h2>
+<p>Sign-in (7.2), the Convert dialog (7.3) with Play Sample, the family
+queue and Scribe Conversions (7.4, 7.4a), My Scribe Documents (7.5),
+download folders and the local record (7.6), Options &gt; Scribe for
+Documents (7.7), and in QUILL the Import tier (Word opens as rich text),
+the low-text PDF offer, Export with Scribe, Braille &gt; Translate with
+Scribe, and Tools &gt; Scribe for Documents as 8.1.8 lists it.</p>
+<ul>
+<li><strong>Who speaks.</strong> Each stage is said once a job (every
+format passes through “converting”); percentages at 25, 50 and 75.</li>
+<li><strong>Passwords across apps (7.4a).</strong> Enter Password in an
+app that does not run the queue hands the password to the app that does
+through the OS secret vault (namespace <code>scribe</code>, so Sign Out
+wipes it too), which reads it once and deletes it. It is never in the
+queue file or a log. A wrong password counts a try; the third ends the
+job with Retry.</li>
+<li><strong>Media Player (8.3).</strong> MP3 and DAISY results open in
+Quill Media Player where the build has it
+(<code>app_launcher.is_app_released("player")</code>: dev builds today,
+since the Player is still gated). A DAISY zip is unpacked once beside
+itself and the Player gets its <code>.ncx</code>, which it now opens
+from the command line or a second launch without a picker. Without the
+Player, the computer’s default player opens them.</li>
+</ul>
+<h2 id="scanning-as-a-way-in">Scanning as a way in</h2>
+<p>File &gt; Import &gt; Scan Pages feeds the same Import tier, so a
+scanned page that QUILL’s OCR reads poorly gets the Scribe offer like
+any other import. The scanner tool is pagescan (Pneuma Solutions, MIT),
+one executable QUILL runs as a separate process on both Windows and
+macOS through <code>quill/core/scanning/pagescan_cli.py</code>; it
+replaced the Windows-only <code>wia-scan.exe</code> and the PyObjC
+ImageCaptureCore backend on 2026-11-21. QUILL always names the source by
+kind (<code>--source flatbed</code> or <code>--source feeder</code>),
+never by id. The design, bundling and open questions are in
+<code>scribe-scanning-addendum.md</code>.</p>
+<h2 id="phase-1-left">Phase 1: left</h2>
+<ul>
+<li>A Word result opened from Scribe Conversions (not the Import tier)
+goes through File &gt; Open, so a Word file with comments or tracked
+changes would ask the fidelity question. Scribe’s results have had none
+so far.</li>
+<li>Play Sample uses whichever engine <code>create_engine</code> picks
+(wx.media on the HP); it has not been tried with a screen reader
+yet.</li>
+<li>The streaming read tab (8.1.3) and the watch-folder action (8.1.6)
+are Phase 3 in the PRD and not started.</li>
+<li>Screen-reader passes with NVDA, JAWS and Narrator are still to do.
+The live runs above drove the core, not the windows.</li>
+<li>Scanning on a Mac goes through pagescan’s macOS backend, which
+nobody has run on a Mac with a scanner yet.</li>
+</ul>
+</main>
+</body>
+</html>

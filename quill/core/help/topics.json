@@ -3745,6 +3745,135 @@
     "user_guide_section": "working-with-different-document-types"
   },
   {
+    "id": "scribe.convert_file",
+    "title": "Convert a File...",
+    "body": "Choose one or more files (PDF, pictures of text, Word, Excel, PowerPoint, OpenDocument, RTF, EPUB, MOBI, HTML or plain text) and convert them with Scribe for Documents, Pneuma Solutions' service, using your own Scribe account. The Convert with Scribe for Documents dialog opens with What will be sent focused: read it, check the formats you want back (Accessible HTML, Word, Tagged PDF, EPUB, Kindle, DAISY with audio, MP3, Braille, or a web page for offline reading), adjust the language, voice, braille and print settings, and press Send and Convert. Nothing is sent before that. Several files go one at a time; each next one waits for Send Next File in Scribe Conversions. Powered by Scribe for Documents.",
+    "keystrokes": [
+      "QUILL Key + Shift+B"
+    ],
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "scribe.convert_document",
+    "title": "Convert This Document...",
+    "body": "Convert the document in front with Scribe for Documents: the file itself when Scribe reads it and it is saved, otherwise a Word copy of what you have written. Powered by Scribe for Documents.",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "scribe.convert_link",
+    "title": "Convert from a Link...",
+    "body": "Convert a document from a link that points straight at a file, such as a PDF. Scribe fetches it itself; web pages and links behind a sign-in are not supported. Powered by Scribe for Documents.",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "scribe.my_documents",
+    "title": "My Scribe Documents",
+    "body": "Every document in your Scribe account, including ones made on the web or the iPhone: title, pages, date and formats ready. Show Documents or Trash. Download Formats gets any format, already made or new, without uploading again (further formats of a document use no pages). Open in QUILL, Rename, Move to Trash, and in the Trash Recover and Delete Forever. Ask for Human Review sends it to Scribe's paid remediation. Copy Details and Refresh. Pages left and Buy Pages are at the bottom. Powered by Scribe for Documents.",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "scribe.conversions",
+    "title": "Scribe Conversions",
+    "body": "The family's Scribe for Documents jobs in one window, the same in every QUILL app: each document, its formats and its stage, and below the list its percent, time left and latest message. Enter opens the result, Delete removes the row, and the Applications key or Shift+F10 lists every command: Open Result, Open Folder, Send Next File, Enter Password, Sign In, Buy Pages, Cancel Waiting, Retry, Ask for Human Review, Copy Details and Remove from List. Escape closes it. Jobs carry on when QUILL closes, and the next QUILL app to start finishes them. Powered by Scribe for Documents.",
+    "keystrokes": [
+      "QUILL Key + Shift+W"
+    ],
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "scribe.sign_in",
+    "title": "Sign In to Scribe for Documents",
+    "body": "Opens Scribe for Documents' own sign-in page in your web browser, unchanged. Sign in there and come back to QUILL; a small window waits, with Copy Sign-in Link for another browser. QUILL never sees your password; the sign-in is kept in your system's secure credential store and covers every QUILL app.",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "scribe.sign_out",
+    "title": "Sign Out of Scribe for Documents",
+    "body": "Ends the Scribe for Documents sign-in on this computer and asks Scribe to forget it. If conversions are waiting, QUILL asks first: they still finish in your Scribe account.",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "scribe.account",
+    "title": "Open My Scribe Account in Browser",
+    "body": "Opens your Scribe for Documents account in your browser, already signed in, for settings, retention, purchases and account deletion.",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "scribe.options",
+    "title": "Scribe for Documents Options",
+    "body": "Opens Options at the Scribe for Documents page: default format, download folder, whether to open each result, the low-text PDF offer, how much to speak, and the batch setting.",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "scribe.about",
+    "title": "About Scribe for Documents",
+    "body": "What Scribe for Documents is, how QUILL uses it, where documents are processed and kept, and buttons for Scribe's terms, privacy policy and manual. Powered by Scribe for Documents.",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "scribe.import",
+    "title": "Import / Convert with Scribe for Documents...",
+    "body": "From File > Import: convert a scanned or badly made document with Scribe for Documents and open the result, Word by default, as a new unsaved tab named after the document with (Scribe). QUILL also offers this when its own free conversion finds little readable text. Powered by Scribe for Documents.",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "scribe.export",
+    "title": "Export with Scribe for Documents...",
+    "body": "From File > Export: send the current document, saved first as Word, to Scribe for Documents for any format, including tagged PDF, Kindle, DAISY with audio and large print, which QUILL does not make itself. QUILL's own exports stay as they are. Powered by Scribe for Documents.",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "scribe.braille",
+    "title": "Translate with Scribe for Documents...",
+    "body": "From the Braille menu: translate the current document to braille (BRF) with Scribe for Documents, using its braille tables and page settings. The result opens in QUILL's braille view, where the proofing tools work on it. Powered by Scribe for Documents.",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "scribe.status",
+    "title": "Scribe Status",
+    "body": "Says the current Scribe for Documents job once without opening anything, for example: Notes.pdf: adding image descriptions, 40 percent, about 2 minutes.",
+    "keystrokes": [
+      "QUILL Key + Shift+U"
+    ],
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "scribe.repeat",
+    "title": "Repeat Last Scribe Message",
+    "body": "Says the last Scribe for Documents sentence again.",
+    "keystrokes": [
+      "QUILL Key + Shift+Y"
+    ],
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "settings.scribe",
+    "title": "Scribe for Documents settings",
+    "body": "Options > Scribe for Documents: Default format (scribe_default_formats), Download folder (scribe_download_folder; blank is Documents, Scribe for Documents, one folder per document), Open each result when it is ready (scribe_open_results: Yes, Offer or No), Offer Scribe when a PDF has little or no text (scribe_offer_low_text_pdf), Speak each stage (scribe_speak_stages: only while a QUILL app is in front, always, or never; start, finish and errors are always said), and Send several files without asking between them (scribe_batch_exception, off until Pneuma allows it). The Convert dialog remembers your last formats and settings (scribe_last_formats, scribe_local_settings) and tells you about privacy before your first upload (scribe_privacy_told). Powered by Scribe for Documents.",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "file.scan",
+    "title": "Scan Pages...",
+    "body": "Scan pages from a flatbed or document-feeder scanner (File > Import > Scan Pages, or the QUILL key, then E with Shift). QUILL looks for scanners; with one it uses it, with several it asks once and remembers. After each page it asks Scan another page? Choose Yes for the next page or No when you are done. Then choose what to do with the pages: read the text with QUILL's own on-device OCR and open it, insert the page into this document as a picture, or save them as one PDF or as pictures. A network scanner can take half a minute a page; QUILL stays usable while it works. QUILL scans through its scanner tool, pagescan, on Windows and on a Mac.",
+    "keystrokes": [
+      "QUILL Key + Shift+E"
+    ],
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "file.scan_choose_scanner",
+    "title": "Choose Scanner...",
+    "body": "List the scanners QUILL can see and choose the one it uses without asking. The choice is kept in the scanner_device and scanner_device_name settings; clear Default scanner in Options > Scanning to be asked again.",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "settings.scanning",
+    "title": "Scanning settings",
+    "body": "Options > Scanning: Default scanner (scanner_device_name, set by Tools > Choose Scanner), Scan resolution (scanner_dpi, 300 dots per inch by default, best for reading text), Scan in gray or color (scanner_color, gray by default), and the Scanner tool location (scanner_tool_path; leave it blank to use the pagescan tool installed with QUILL).",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
     "id": "tools.run_python",
     "title": "Run Python",
     "body": "Run the current document (or selection) as a Python script in a restricted sandbox and show the output.",

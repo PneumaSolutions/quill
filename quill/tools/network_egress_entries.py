@@ -18,6 +18,7 @@ from quill.tools.network_egress_entries_command_key import COMMAND_KEY_EGRESS
 from quill.tools.network_egress_entries_github import GITHUB_WORKBENCH_EGRESS
 from quill.tools.network_egress_entries_radio import RADIO_EGRESS
 from quill.tools.network_egress_entries_radio_listening import RADIO_LISTENING_EGRESS
+from quill.tools.network_egress_entries_scribe import SCRIBE_EGRESS, SCRIBE_REVIEWED_EGRESS
 from quill.tools.network_egress_entries_speech import SPEECH_EGRESS
 from quill.tools.network_egress_entries_wordpress import WORDPRESS_EGRESS
 
@@ -32,6 +33,7 @@ _REVIEWED_EGRESS: dict[str, str] = {
     **WORDPRESS_EGRESS,
     **AGENT_HTTP_EGRESS,  # Ollama practice mode, loopback only
     **COMMAND_KEY_EGRESS,  # the Command Key's Jev call, beside this module
+    **SCRIBE_REVIEWED_EGRESS,  # Scribe for Documents' REST door
     "core/audio/url_import.py::_default_download": (
         "The Universal Audio Converter's optional URL import (#1255 §4.6): "
         "downloads the best-audio stream of a user-pasted http(s) link via yt-dlp "
@@ -794,6 +796,7 @@ _REVIEWED_EGRESS: dict[str, str] = {
 _NON_AST_EGRESS: dict[str, str] = {
     # The Copilot SDK native runtime and the commands a person approves for an agent.
     **AGENT_EGRESS,
+    **SCRIBE_EGRESS,
     "core/lsp/client.py::start": (
         "None, by design: a note so nobody has to wonder. The language servers "
         "(tools/language-servers, run by the bundled tools/nodejs/node.exe, or "

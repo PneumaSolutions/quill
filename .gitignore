@@ -286,3 +286,7 @@ platform-report.md
 describe.md
 # The Codex family plan Jeff reviews at the repo root (2026-10-31); a working draft, not a repo document.
 /codex.md
+
+# The scanner tool (pagescan.exe, or pagescan on a Mac) staged for a run from source
+# and picked up by the Windows and macOS builds.
+tools/scanner/

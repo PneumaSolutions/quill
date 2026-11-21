@@ -283,6 +283,10 @@
         "criterion": "Save a copy of this document under a new name or in another place. For example: \"save this under a new name\".",
         "stepped": false
       },
+      "file.scan": {
+        "criterion": "Scan pages from my scanner. For example: \"scan a page\".",
+        "stepped": false
+      },
       "format.bold": {
         "criterion": "Make the selected text bold (rich documents only). For example: \"make this bold\".",
         "stepped": false
@@ -401,6 +405,58 @@
       },
       "navigate.speak_status_summary": {
         "criterion": "Say where you are and the state of the document. For example: \"where am I\".",
+        "stepped": false
+      },
+      "scribe.about": {
+        "criterion": "Learn what Scribe for Documents is. For example: \"tell me about scribe\".",
+        "stepped": false
+      },
+      "scribe.braille": {
+        "criterion": "Turn this document into braille with Scribe's tables. For example: \"translate this to braille with scribe\".",
+        "stepped": false
+      },
+      "scribe.conversions": {
+        "criterion": "See how my Scribe conversions are going. For example: \"show scribe conversions\".",
+        "stepped": false
+      },
+      "scribe.convert_document": {
+        "criterion": "Send the document I have open to Scribe for another format. For example: \"convert this document with scribe\".",
+        "stepped": false
+      },
+      "scribe.convert_file": {
+        "criterion": "Make a document accessible with Scribe: Word, PDF, braille, audio and more. For example: \"convert a file with scribe\".",
+        "stepped": false
+      },
+      "scribe.convert_link": {
+        "criterion": "Convert a document from a link to a file. For example: \"convert a link with scribe\".",
+        "stepped": false
+      },
+      "scribe.export": {
+        "criterion": "Save this document as tagged PDF, Kindle, DAISY with audio or large print. For example: \"export this with scribe\".",
+        "stepped": false
+      },
+      "scribe.import": {
+        "criterion": "Turn a scanned or badly made document into one I can edit. For example: \"import a scanned document with scribe\".",
+        "stepped": false
+      },
+      "scribe.my_documents": {
+        "criterion": "See the documents in my Scribe account. For example: \"show my scribe documents\".",
+        "stepped": false
+      },
+      "scribe.options": {
+        "criterion": "Change how Scribe conversions behave. For example: \"open scribe options\".",
+        "stepped": false
+      },
+      "scribe.repeat": {
+        "criterion": "Hear the last Scribe message again. For example: \"repeat the last scribe message\".",
+        "stepped": false
+      },
+      "scribe.sign_in": {
+        "criterion": "Sign in to my Scribe account. For example: \"sign in to scribe\".",
+        "stepped": false
+      },
+      "scribe.status": {
+        "criterion": "Hear where the current Scribe conversion is. For example: \"what is scribe doing\".",
         "stepped": false
       },
       "tools.next_misspelling": {

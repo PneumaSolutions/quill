@@ -334,6 +334,19 @@ def main() -> int:
         help="Optional local Pandoc directory to bundle under portable\\tools\\pandoc.",
     )
     parser.add_argument(
+        "--scanner-tool",
+        type=Path,
+        default=None,
+        help=(
+            "The pagescan.exe scanner tool to bundle under portable\\tools\\scanner "
+            "(scanning in QUILL, quill/core/scanning/pagescan_cli.py). Defaults to "
+            "tools\\scanner\\pagescan.exe in the source root when it is there; "
+            "without either, the build warns and scanning says the tool is missing. "
+            "Get it from the pagescan release (PneumaSolutions/pagescan) or build it: "
+            "cargo build --release, then target\\release\\pagescan.exe."
+        ),
+    )
+    parser.add_argument(
         "--espeak-dir",
         type=Path,
         default=None,
@@ -442,6 +455,7 @@ def main() -> int:
             if path is not None
         },
         kokoro_dir=args.kokoro_dir,
+        scanner_tool=args.scanner_tool,
         compile_installer=args.compile_installer,
         iscc_path=args.iscc_path,
         offline_edition=args.bundle_offline,
@@ -464,6 +478,7 @@ def build_windows_distribution(
     kokoro_dir: Path | None = None,
     braille_pack_dir: Path | None = None,
     bundle_offline: bool = False,
+    scanner_tool: Path | None = None,
     compile_installer: bool = False,
     iscc_path: Path | None = None,
     offline_edition: bool = False,
@@ -520,6 +535,7 @@ def build_windows_distribution(
     # Optional tools may be staged explicitly when their IDs are supported.
     bundled_tools = _stage_bundled_tools(portable_dir, effective_bundled_tools)
     bundled_tools.extend(_stage_practice_site_tools(portable_dir, resolved_source_root))
+    bundled_tools.extend(_stage_scanner_tool(portable_dir, resolved_source_root, scanner_tool))
     # Kokoro is NO LONGER bundled by default (PRD 10.2.4 unbundle): fresh installs
     # download it on demand from QUILL's pinned, SHA-256-verified release asset, and
     # the runtime prefers the %APPDATA% copy. A build may still opt to stage a local
@@ -2683,6 +2699,36 @@ def _stage_bundled_tools(portable_dir: Path, bundled_tool_dirs: dict[str, Path])
         shutil.copytree(source, target, dirs_exist_ok=True)
         bundled.append(tool_id)
     return sorted(bundled)
+
+
+#: Where QUILL looks for the scanner tool beside the program
+#: (quill/core/scanning/pagescan_cli.py, through QUILL_APP_ROOT).
+SCANNER_TOOL_RELPATH = Path("tools") / "scanner" / "pagescan.exe"
+
+
+def _stage_scanner_tool(
+    portable_dir: Path, source_root: Path, explicit: Path | None = None
+) -> list[str]:
+    """Bundle pagescan.exe (Pneuma Solutions, MIT) under tools/scanner.
+
+    The tool is a prebuilt Rust executable, not built here: pass
+    ``--scanner-tool``, or put it at ``tools/scanner/pagescan.exe`` in the
+    source root (gitignored). Get it from the pagescan GitHub release
+    (PneumaSolutions/pagescan) or build it from source with ``cargo build
+    --release``. A build without it still succeeds, with a warning, and Scan
+    Pages then says the scanner tool is missing.
+    """
+    source = explicit or (source_root / SCANNER_TOOL_RELPATH)
+    if not source.is_file():
+        if explicit is not None:
+            raise RuntimeError(f"Scanner tool not found: {explicit}")
+        print(f"WARNING: no scanner tool at {source}; this build cannot scan. See --scanner-tool.")
+        return []
+    target = portable_dir / SCANNER_TOOL_RELPATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
+    print(f"Bundled the scanner tool (pagescan) from {source}.")
+    return ["scanner"]
 
 
 def _stage_practice_site_tools(portable_dir: Path, source_root: Path) -> list[str]:

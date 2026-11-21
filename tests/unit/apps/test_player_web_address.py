@@ -152,6 +152,17 @@ def test_a_local_file_still_opens(player, tmp_path: Path) -> None:
     assert player._now_playing.GetValue() == "chapter one"
 
 
+def test_a_daisy_navigation_file_opens_as_a_book_without_a_picker(player, tmp_path: Path) -> None:
+    """Scribe PRD 8.3: QUILL hands Scribe's DAISY over as its .ncx."""
+    ncx = tmp_path / "dtb.ncx"
+    ncx.write_text("<ncx/>", encoding="utf-8")
+    opened: list[Path] = []
+    player._load_daisy = opened.append
+    assert (lambda w: w._open_launch_arguments([str(ncx)]))(player) is True
+    assert opened == [ncx]
+    assert player._player._engine.loaded == []
+
+
 def test_a_second_launch_hands_its_address_to_the_running_player(
     player, quill_data_dir: Path
 ) -> None:

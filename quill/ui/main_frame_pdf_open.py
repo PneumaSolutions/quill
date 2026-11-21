@@ -61,13 +61,17 @@ class PdfOpenOcrMixin:
 
     def _ask_ocr_for_scanned_pdf(self, path: Path, found: PdfOpen) -> None:
         wx = self._wx
-        answer = self._show_message_box(
-            scanned_question(path.name, found.page_count, some_text=found.has_text),
-            SCANNED_DIALOG_TITLE,
-            wx.ICON_QUESTION | wx.YES_NO | wx.YES_DEFAULT,
-        )
-        if answer != wx.YES:
+        offer = self._scribe_offered_for_pdf(path, found)
+        if offer == "done":
             return
+        if offer != "ocr":
+            answer = self._show_message_box(
+                scanned_question(path.name, found.page_count, some_text=found.has_text),
+                SCANNED_DIALOG_TITLE,
+                wx.ICON_QUESTION | wx.YES_NO | wx.YES_DEFAULT,
+            )
+            if answer != wx.YES:
+                return
         from quill.io.docconvert import _Deps
         from quill.io.tesseract_ocr import tesseract_available
 
@@ -95,6 +99,55 @@ class PdfOpenOcrMixin:
             on_failure=lambda _op, error: self._scanned_pdf_failed(path, error),
             on_progress=lambda _op, message: self._set_status(str(message)),
         )
+
+    def _scribe_offered_for_pdf(self, path: Path, found: PdfOpen) -> str:
+        """Scribe PRD 8.1.2: the OCR offer gains Scribe for Documents, as one
+        choice among three, when Options says so. ``"ocr"``: read it on this
+        computer; ``"done"``: handled (Scribe, or not now); ``""``: not offered."""
+        from quill.core.scribe.auth import check_allowed
+        from quill.core.scribe.model import ScribeError
+
+        settings = getattr(self, "settings", None)
+        if not getattr(settings, "scribe_offer_low_text_pdf", False) or not hasattr(
+            self, "_scribe_convert"
+        ):
+            return ""
+        try:
+            check_allowed()
+        except ScribeError:
+            return ""
+        from quill.core.scribe.consent import describe_source
+        from quill.ui.dialog_contract import apply_modal_ids
+
+        wx = self._wx
+        pages = found.page_count or "one"
+        choices = [
+            "Read it with OCR on this computer (nothing is uploaded)",
+            "Convert with Scribe for Documents (rebuilds headings, tables and picture "
+            f"descriptions; uses about {pages} pages of your Scribe credit)",
+            "Not now",
+        ]
+        dialog = wx.SingleChoiceDialog(
+            self.frame,
+            # The whole question, worded for a list rather than Yes and No (Q42).
+            scanned_question(path.name, found.page_count, some_text=found.has_text).split("\n")[0]
+            + " Choose how to read it. OCR on this computer uploads nothing and does not "
+            "change the PDF; Scribe for Documents uploads it to your Scribe account.",
+            SCANNED_DIALOG_TITLE,
+            choices,
+        )
+        apply_modal_ids(dialog, affirmative_id=wx.ID_OK, escape_id=wx.ID_CANCEL)
+        try:
+            dialog.SetSelection(0)
+            if self._show_modal_dialog(dialog, SCANNED_DIALOG_TITLE) != wx.ID_OK:
+                return "done"
+            picked = int(dialog.GetSelection())
+        finally:
+            dialog.Destroy()
+        if picked == 1:
+            source = describe_source(path)
+            self._scribe_convert([source], formats="docx", purpose="import")  # type: ignore[attr-defined]
+        return "ocr" if picked == 0 else "done"
 
     def _scanned_pdf_read(self, path: Path, result: PdfOpen) -> None:
         """Put the OCR text in the PDF's tab, or a new tab if the old one was edited."""

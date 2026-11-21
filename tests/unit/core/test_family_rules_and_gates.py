@@ -188,6 +188,52 @@ UNBOUND_WITH_REASON: dict[str, str] = {
     "file.open_url": "Reached another way: File > Open from URL..., in both editors. "
     "The address has to be typed into its window anyway, so a chord would only "
     "open a box that still needs the whole URL (rule 9).",
+    "scribe.convert_document": (
+        "Reached another way: Tools > Scribe for Documents > Convert This Document..., "
+        "beside the keyed Convert a File (Scribe PRD 8.1.8, keys deliberately few)."
+    ),
+    "scribe.convert_link": (
+        "Reached another way: Tools > Scribe for Documents > Convert from a Link..., a "
+        "once-in-a-while entry point (Scribe PRD 8.1.8, keys deliberately few)."
+    ),
+    "scribe.my_documents": (
+        "Reached another way: File > My Scribe Documents and Tools > Scribe for "
+        "Documents, a modal list opened now and then (Scribe PRD 8.1.8, keys deliberately"
+        " few)."
+    ),
+    "scribe.sign_in": (
+        "Reached another way: Tools > Scribe for Documents > Sign In, and the first "
+        "Scribe command asks by itself (Scribe PRD 8.1.8, keys deliberately few)."
+    ),
+    "scribe.sign_out": (
+        "Reached another way: Tools > Scribe for Documents > Sign Out, a once-a-year "
+        "command (rule 9) (Scribe PRD 8.1.8, keys deliberately few)."
+    ),
+    "scribe.account": (
+        "Reached another way: Tools > Scribe for Documents > Open My Scribe Account in "
+        "Browser, a web page opened rarely (Scribe PRD 8.1.8, keys deliberately few)."
+    ),
+    "scribe.options": (
+        "Reached another way: Tools > Scribe for Documents > Options, and the Scribe for "
+        "Documents page of Options itself (Scribe PRD 8.1.8, keys deliberately few)."
+    ),
+    "scribe.about": (
+        "Reached another way: Tools > Scribe for Documents > About Scribe for Documents, "
+        "read once (Scribe PRD 8.1.8, keys deliberately few)."
+    ),
+    "scribe.import": (
+        "Reached another way: File > Import > Convert with Scribe for Documents..., and "
+        "offered when a free import finds little text (Scribe PRD 8.1.8, keys "
+        "deliberately few)."
+    ),
+    "scribe.export": (
+        "Reached another way: File > Export > With Scribe for Documents..., one of the "
+        "Export submenu's formats (Scribe PRD 8.1.8, keys deliberately few)."
+    ),
+    "scribe.braille": (
+        "Reached another way: Braille > Translate with Scribe for Documents..., beside "
+        "the braille commands it joins (Scribe PRD 8.1.8, keys deliberately few)."
+    ),
     "file.import_convert": "Reached another way: File > Import / Convert Document (OCR)..., "
     "in both editors (QUILL Lite since 2026-10-17). Rule 9: converting a Word file or a "
     "scanned page is occasional, and the box that follows asks which file anyway.",

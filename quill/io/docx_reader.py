@@ -170,10 +170,29 @@ def _paragraph_spans(paragraph: Any) -> list[InlineSpan]:
     return spans
 
 
+#: ``w:jc`` values python-docx has no enum for: the ISO 29500 names that
+#: Word 2010 onwards (and Scribe for Documents' Word output) write.
+_RAW_ALIGNMENTS = {"start": "left", "end": "right", "both": "justify", "distribute": "justify"}
+
+
+def _paragraph_align(paragraph: Any) -> str | None:
+    """The paragraph's alignment, tolerating ``w:jc`` values python-docx rejects.
+
+    python-docx raises ``ValueError`` for ``w:jc w:val="start"``, which every
+    Scribe for Documents Word result uses; that used to stop the whole rich read.
+    """
+    try:
+        alignment = paragraph.alignment
+    except ValueError:
+        p_pr = paragraph._p.pPr
+        jc = p_pr.find(f"{_W_NS}jc") if p_pr is not None else None
+        return _RAW_ALIGNMENTS.get(jc.get(f"{_W_NS}val", "")) if jc is not None else None
+    return _ALIGNMENTS.get(getattr(alignment, "name", str(alignment))) if alignment else None
+
+
 def _paragraph_to_rich(paragraph: Any) -> RichParagraph:
     style, level, named_style = _paragraph_shape(getattr(paragraph.style, "name", ""))
-    alignment = paragraph.alignment
-    align = _ALIGNMENTS.get(getattr(alignment, "name", str(alignment))) if alignment else None
+    align = _paragraph_align(paragraph)
     spans = _paragraph_spans(paragraph)
     if not spans and paragraph.text:
         spans = [InlineSpan(text=str(paragraph.text))]

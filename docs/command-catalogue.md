@@ -6,7 +6,12 @@ Each command has a name, its key when it has one, what it does, and some of the 
 
 ## QUILL
 
-63 commands can be asked for in a sentence here.
+77 commands can be asked for in a sentence here.
+
+### QUILL: Braille
+
+- **Translate to Braille with Scribe for Documents.** Turn this document into braille with Scribe's tables.
+  Say: "translate this to braille with scribe"; "make braille with scribe"; "scribe this into braille".
 
 ### QUILL: Edit
 
@@ -27,6 +32,12 @@ Each command has a name, its key when it has one, what it does, and some of the 
 
 - **Close Document (Ctrl+W).** Close this document. It asks before it does it.
   Say: "close this document"; "I'm done with this file"; "close it".
+- **Export with Scribe for Documents.** Save this document as tagged PDF, Kindle, DAISY with audio or large print.
+  Say: "export this with scribe"; "make a tagged pdf with scribe"; "make a daisy book with scribe".
+- **Import with Scribe for Documents.** Turn a scanned or badly made document into one I can edit.
+  Say: "import a scanned document with scribe"; "import with scribe"; "rebuild this scan with scribe".
+- **My Scribe Documents.** See the documents in my Scribe account.
+  Say: "show my scribe documents"; "open my scribe library"; "what is in my scribe account".
 - **New Document (Ctrl+N).** Start a new blank document.
   Say: "start a new document"; "give me a blank page"; "new file please".
 - **Open (Ctrl+O).** Open a document from a folder.
@@ -41,6 +52,8 @@ Each command has a name, its key when it has one, what it does, and some of the 
   Say: "save all my documents"; "save every file"; "save everything that is open".
 - **Save As (Ctrl+Shift+S).** Save a copy of this document under a new name or in another place.
   Say: "save this under a new name"; "save a copy"; "save it somewhere else".
+- **Scan Pages (Ctrl+Shift+Grave, Shift+E).** Scan pages from my scanner.
+  Say: "scan a page"; "scan some pages"; "scan a letter".
 - **This Post in the Workbench (Ctrl+Alt+Shift+Grave, Shift+H).** Open the WordPress Workbench with this document's post selected.
   Say: "show this post in the wordpress workbench"; "find this post in the workbench"; "where is this post on my site".
 
@@ -120,6 +133,14 @@ Each command has a name, its key when it has one, what it does, and some of the 
 
 ### QUILL: Tools
 
+- **About Scribe for Documents.** Learn what Scribe for Documents is.
+  Say: "tell me about scribe"; "what is scribe for documents"; "about scribe for documents".
+- **Convert a File with Scribe for Documents (Ctrl+Shift+Grave, Shift+B).** Make a document accessible with Scribe: Word, PDF, braille, audio and more.
+  Say: "convert a file with scribe"; "open scribe convert"; "make this pdf accessible with scribe".
+- **Convert from a Link with Scribe for Documents.** Convert a document from a link to a file.
+  Say: "convert a link with scribe"; "scribe a web link"; "convert a pdf link with scribe".
+- **Convert This Document with Scribe for Documents.** Send the document I have open to Scribe for another format.
+  Say: "convert this document with scribe"; "scribe this document"; "send this document to scribe".
 - **Form Responses (Ctrl+Alt+Shift+Grave, F).** Read the responses people sent to a form on your WordPress site.
   Say: "show my form responses"; "who filled in the contact form"; "read the newest form entries".
 - **Next Misspelling (Ctrl+F7).** Move to the next misspelled word.
@@ -128,6 +149,14 @@ Each command has a name, its key when it has one, what it does, and some of the 
   Say: "open the wordpress workbench"; "show me my wordpress sites"; "what needs me on my sites".
 - **Read Aloud (Ctrl+Shift+Grave, R).** Read the document aloud, or pause reading.
   Say: "read this to me"; "read the document out loud"; "pause the reading".
+- **Repeat Last Scribe Message (Ctrl+Shift+Grave, Shift+Y).** Hear the last Scribe message again.
+  Say: "repeat the last scribe message"; "what did scribe say"; "say that scribe message again".
+- **Scribe for Documents Options.** Change how Scribe conversions behave.
+  Say: "open scribe options"; "change scribe settings"; "scribe preferences".
+- **Scribe Status (Ctrl+Shift+Grave, Shift+U).** Hear where the current Scribe conversion is.
+  Say: "what is scribe doing"; "scribe status"; "how far along is scribe".
+- **Sign In to Scribe for Documents.** Sign in to my Scribe account.
+  Say: "sign in to scribe"; "log in to scribe"; "connect my scribe account".
 - **Sounds On or Off (Alt+Shift+M).** Turn QUILL's sounds on or off.
   Say: "turn the sounds off"; "stop the beeps"; "sounds back on".
 - **Spelling (F7).** Check the spelling of the document.
@@ -158,6 +187,11 @@ Each command has a name, its key when it has one, what it does, and some of the 
 - **Zoom Out (Ctrl+-).** Make the view on screen smaller, without changing the document.
   Say: "zoom out"; "make it smaller on screen"; "less magnified".
 
+### QUILL: Window
+
+- **Scribe Conversions (Ctrl+Shift+Grave, Shift+W).** See how my Scribe conversions are going.
+  Say: "show scribe conversions"; "how are my scribe conversions doing"; "open the scribe queue".
+
 ### QUILL: only from its menu or key
 
 These are never done from a sentence, because they send, delete, sign in, change settings or leave the app. Each is still on its menu and its key.
@@ -172,6 +206,7 @@ These are never done from a sentence, because they send, delete, sign in, change
 - Exit: File, Exit.
 - Language Servers: Navigate, Code, Language Servers.
 - Open a Web Address: File, Open a Web Address.
+- Open My Scribe Account in Browser: Tools, Scribe for Documents, Open My Scribe Account in Browser.
 - Preferences Hub: Tools, Preferences Hub.
 - Replace All: Edit, Replace.
 - Report the Editor Surface: Help, Troubleshooting.
@@ -181,6 +216,7 @@ These are never done from a sentence, because they send, delete, sign in, change
 - Say or Type a Command: F11.
 - Send to Tray: View, Send to Tray.
 - Settings: Tools, Settings.
+- Sign Out of Scribe for Documents: Tools, Scribe for Documents, Sign Out.
 - Speech and Braille Self-Test: Help, Troubleshooting.
 - Where Am I, in Detail: Navigate, Where Am I.
 

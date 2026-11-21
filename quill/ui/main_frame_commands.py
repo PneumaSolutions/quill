@@ -969,6 +969,8 @@ class CommandRegistryMixin:
             self.open_ocr_service_settings,
             None,
         )
+        self._register_scribe_commands()  # Scribe for Documents: main_frame_scribe.py
+        self._register_scanning_commands()  # Scan Pages: main_frame_scanning.py
         self.commands.register(
             "tools.delete_ocr_temp",
             "Delete OCR Temporary Files",

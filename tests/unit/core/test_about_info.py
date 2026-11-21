@@ -264,3 +264,11 @@ def test_donate_url_is_present_and_optional_default() -> None:
     assert gather_about_info(donate_url="https://example.org/give").donate_url == (
         "https://example.org/give"
     )
+
+
+def test_overview_says_powered_by_scribe_for_documents() -> None:
+    """Jeff's Scribe PRD (SCR-POL-1): the About box names Scribe for Documents."""
+    from quill.core.scribe.model import POWERED_BY
+
+    info = gather_about_info(display_version="1.0", channel="Release", support_info="x")
+    assert any(POWERED_BY in p for p in info.overview_paragraphs)

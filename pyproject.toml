@@ -123,6 +123,10 @@ ui = [
     # graceful missing-nacl path in quill.tools.signing stays as defense in
     # depth; it just almost never triggers now.
     "PyNaCl>=1.6.2",
+    # websockets: Scribe for Documents' document channel (quill/core/scribe/
+    # channel.py, Scribe PRD 7.1). Already in the shared runtime for live
+    # dictation; declared here so Scribe cannot quietly lose it.
+    "websockets>=15.0.1",
 ]
 spellcheck = ["pyenchant>=3.3.0"]
 # macOS native rich text (One Editor, Every Format, Phase 6): PyObjC lets
@@ -132,6 +136,8 @@ spellcheck = ["pyenchant>=3.3.0"]
 # includes, since the imports are lazy and the tracer misses them) — nothing
 # for end users to install. This extra covers source/pip installs on a Mac.
 # The code path still degrades to converted rich if the bridge is ever absent.
+# Scanning on a Mac needs no Python package: it runs the bundled pagescan
+# tool (quill/core/scanning/pagescan_cli.py), the same as on Windows.
 mac = ["pyobjc-framework-Cocoa>=12.2.2; sys_platform == 'darwin'"]
 # Cross-platform earcon audio via BASS (Un4seen). Enables true mixing so multiple
 # sounds can play simultaneously. Falls back to winsound (Windows) or silence without

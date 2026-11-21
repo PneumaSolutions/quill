@@ -137,15 +137,10 @@ def reset_all() -> Settings:
 
 #: Settings that describe *this machine* rather than how QUILL should behave:
 #: folders, file locations, and the "last used" memories that point at them.
-#: They are left out of a portable export, because the whole point of one is to
-#: land on a different machine -- where a path to somebody else's Downloads
-#: folder is not a preference, it is a broken setting (#1501). Left out rather
-#: than blanked, so importing an old file cannot wipe a good local value either.
-#:
-#: API keys are deliberately absent from this list because they are absent from
-#: Settings entirely: they live in the OS credential store, so a .qsf has never
-#: been able to carry one. The reporter was right to ask; the answer is that it
-#: was already safe.
+#: Left out of a portable export (not blanked, so importing an old file cannot
+#: wipe a good local value): on another machine a path is a broken setting
+#: (#1501), and a program's path is a risk (the scanner tool; Scribe review Q2).
+#: API keys are absent because Settings never holds them (OS credential store).
 LOCAL_SETTINGS: frozenset[str] = frozenset({
     "abbreviation_expansion_sound_file",
     "batch_speech_temp_folder",
@@ -154,6 +149,10 @@ LOCAL_SETTINGS: frozenset[str] = frozenset({
     "import_export_last_folder",
     "last_update_check",
     "read_aloud_piper_model_dir",
+    "scanner_device",
+    "scanner_device_name",
+    "scanner_tool_path",
+    "scribe_download_folder",
     "sound_pack_path",
     "startup_folder",
     "tesseract_path",

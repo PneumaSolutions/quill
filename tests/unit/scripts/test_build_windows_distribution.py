@@ -12,12 +12,14 @@ from scripts.build_windows_distribution import (
     FASTER_WHISPER_WHEELHOUSE_REQUIREMENTS,
     KOKORO_WHEELHOUSE_REQUIREMENTS,
     MP3_WHEELHOUSE_REQUIREMENTS,
+    SCANNER_TOOL_RELPATH,
     SHERPA_WHEELHOUSE_REQUIREMENTS,
     VOSK_WHEELHOUSE_REQUIREMENTS,
     _assert_no_retired_credential,
     _prune_embedded_runtime,
     _speech_asset_manifest,
     _stage_pip_wheelhouse,
+    _stage_scanner_tool,
     _stage_whisper_model,
     build_inno_setup_script,
     build_shell_verb_registry_lines,
@@ -44,6 +46,33 @@ def test_bundled_tools_reject_unsupported_ids(tmp_path: Path, tool_id: str) -> N
     with pytest.raises(RuntimeError, match="Unsupported bundled tool IDs"):
         _stage_bundled_tools(tmp_path / "portable", {tool_id: source})
     assert not (tmp_path / "portable" / "tools").exists()
+
+
+@pytest.fixture(autouse=True)
+def _no_local_scanner_tool(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A developer's own tools/scanner/pagescan.exe (gitignored, how a run from
+    source scans) must not change what a test build bundles. The function
+    itself is tested through the reference imported above, taken before this
+    patch."""
+    import scripts.build_windows_distribution as bwd
+
+    monkeypatch.setattr(bwd, "_stage_scanner_tool", lambda *_a, **_k: [])
+
+
+def test_the_scanner_tool_is_bundled_where_quill_looks(tmp_path: Path) -> None:
+    portable = tmp_path / "portable"
+    # No pagescan.exe anywhere: the build goes on, it just cannot scan.
+    assert _stage_scanner_tool(portable, tmp_path / "src") == []
+    assert not (portable / "tools" / "scanner").exists()
+    # The gitignored tools/scanner of the source root is picked up.
+    staged = tmp_path / "src" / SCANNER_TOOL_RELPATH
+    staged.parent.mkdir(parents=True)
+    staged.write_bytes(b"MZ")
+    assert _stage_scanner_tool(portable, tmp_path / "src") == ["scanner"]
+    assert (portable / "tools" / "scanner" / "pagescan.exe").read_bytes() == b"MZ"
+    # An explicit --scanner-tool that is not there is a mistake, not a warning.
+    with pytest.raises(RuntimeError, match="Scanner tool not found"):
+        _stage_scanner_tool(portable, tmp_path / "src", tmp_path / "nope.exe")
 
 
 @pytest.fixture(autouse=True)

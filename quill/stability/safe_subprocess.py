@@ -116,8 +116,12 @@ def spawn_subprocess_safely(
     *,
     cwd: str | None = None,
     env: dict[str, str] | None = None,
+    stderr: int = subprocess.PIPE,
 ) -> subprocess.Popen[bytes]:
     """Start a long-lived child with piped stdin, stdout and stderr (bytes).
+
+    ``stderr=subprocess.DEVNULL`` for a child whose diagnostics nobody reads:
+    an unread pipe fills and blocks the child.
 
     The same contract as :func:`run_subprocess_safely` -- non-empty ``args``
     from a fixed, trusted executable; an existing ``cwd``; only the redacted
@@ -144,7 +148,7 @@ def spawn_subprocess_safely(
             env=env,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=stderr,
             bufsize=0,
             **extra_kwargs,
         )

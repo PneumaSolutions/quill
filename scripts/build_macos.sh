@@ -96,6 +96,14 @@ if [[ -n "$PYLIBDIR" && -d "$RES_LIB" ]]; then
   done
 fi
 
+# The scanner tool (pagescan, staged by setup_macos.py when tools/scanner/pagescan
+# was in the checkout) is a Mach-O executable copied as data: make sure it can
+# run, and sign it in the inside-out pass below like any nested binary.
+SCANNER="$APP/Contents/Resources/tools/scanner/pagescan"
+if [[ -f "$SCANNER" ]]; then
+  chmod +x "$SCANNER"
+fi
+
 if [[ -n "${IDENTITY:-}" ]]; then
   echo "==> Codesigning (hardened runtime, inside-out)"
   # --deep is unreliable: it leaves nested .so/.dylib without a Developer ID
@@ -109,6 +117,9 @@ if [[ -n "${IDENTITY:-}" ]]; then
   # directory". The real targets are regular files and still get signed.
   find "$APP" -type f \( -name "*.so" -o -name "*.dylib" \) -print0 \
     | xargs -0 -P 6 -I{} codesign --force --timestamp --options runtime --sign "$IDENTITY" "{}"
+  if [[ -f "$SCANNER" ]]; then
+    codesign --force --timestamp --options runtime --sign "$IDENTITY" "$SCANNER"
+  fi
   if [[ -e "$APP/Contents/Frameworks/Python.framework/Versions/$PYVER/Python" ]]; then
     codesign --force --timestamp --options runtime --sign "$IDENTITY" \
       "$APP/Contents/Frameworks/Python.framework/Versions/$PYVER/Python"

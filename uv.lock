@@ -5753,6 +5753,7 @@ ui = [
     { name = "psutil", marker = "sys_platform == 'win32'" },
     { name = "pynacl" },
     { name = "pywin32", marker = "sys_platform == 'win32'" },
+    { name = "websockets" },
     { name = "wx-accessible-webview" },
     { name = "wxpython" },
 ]
@@ -5898,6 +5899,7 @@ requires-dist = [
     { name = "vosk", marker = "extra == 'vosk'", specifier = ">=0.3.45" },
     { name = "websockets", marker = "extra == 'live-dictation'", specifier = ">=15.0.1" },
     { name = "websockets", marker = "extra == 'runtime'", specifier = ">=15.0.1" },
+    { name = "websockets", marker = "extra == 'ui'", specifier = ">=15.0.1" },
     { name = "winrt-runtime", marker = "sys_platform == 'win32' and extra == 'ocr'", specifier = "~=4.0.3" },
     { name = "winrt-runtime", marker = "sys_platform == 'win32' and extra == 'runtime'", specifier = "~=4.0.3" },
     { name = "winrt-runtime", marker = "sys_platform == 'win32' and extra == 'windows-media'", specifier = "~=4.0.3" },

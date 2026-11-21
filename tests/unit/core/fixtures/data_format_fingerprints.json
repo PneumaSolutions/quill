@@ -928,7 +928,21 @@
             "batch_speech_temp_folder": "str",
             "batch_speech_save_spoken_text": "bool",
             "audio_studio_last_journey": "str",
-            "audio_studio_chapter_nudge_ms": "int"
+            "audio_studio_chapter_nudge_ms": "int",
+            "scanner_device": "str",
+            "scanner_device_name": "str",
+            "scanner_dpi": "str",
+            "scanner_color": "str",
+            "scanner_tool_path": "str",
+            "scribe_default_formats": "str",
+            "scribe_download_folder": "str",
+            "scribe_open_results": "str",
+            "scribe_offer_low_text_pdf": "bool",
+            "scribe_speak_stages": "str",
+            "scribe_batch_exception": "bool",
+            "scribe_last_formats": "str",
+            "scribe_local_settings": "dict[str, Any]",
+            "scribe_privacy_told": "bool"
           }
         },
         "groups:quill.core.settings_migration:to_versioned": {
@@ -1346,12 +1360,26 @@
           "batch_speech_temp_folder": "_ungrouped",
           "batch_speech_save_spoken_text": "_ungrouped",
           "audio_studio_last_journey": "_ungrouped",
-          "audio_studio_chapter_nudge_ms": "_ungrouped"
+          "audio_studio_chapter_nudge_ms": "_ungrouped",
+          "scanner_device": "_ungrouped",
+          "scanner_device_name": "scanning",
+          "scanner_dpi": "scanning",
+          "scanner_color": "scanning",
+          "scanner_tool_path": "scanning",
+          "scribe_default_formats": "scribe",
+          "scribe_download_folder": "scribe",
+          "scribe_open_results": "scribe",
+          "scribe_offer_low_text_pdf": "scribe",
+          "scribe_speak_stages": "scribe",
+          "scribe_batch_exception": "scribe",
+          "scribe_last_formats": "_ungrouped",
+          "scribe_local_settings": "_ungrouped",
+          "scribe_privacy_told": "_ungrouped"
         },
         "constant:quill.core.settings_migration:SETTINGS_SCHEMA_VERSION": "2"
       },
       "classification": "additive, compatible",
-      "note": ""
+      "note": "2026-11-21: five scanner_* and nine scribe_* fields (Options > Scanning, Options > Scribe for Documents); older builds ignore unknown keys"
     },
     "radio.favorites": {
       "current": 1,
