@@ -13,6 +13,14 @@ other app reads the same file and shows the same state silently. When the
 holder closes, the next app to look takes the lock and carries on: closing an
 app never loses a job.
 
+The holder beats the lock every :data:`HEARTBEAT_S` for as long as a job runs
+(``runner.py`` beats it from its own thread), and each job is **claimed**:
+:meth:`JobQueue.claim` marks it with the runner's pid and a lease, under the
+strict lock, so a second app can never take a job another live app is running.
+Before the 2026-11-21 independent review (Q1) the lock was beaten only while
+the queue was idle, so any job longer than twenty seconds let a second app
+upload it again.
+
 Nothing secret is ever written here: no tokens, no passwords. A PDF password
 lives only in the memory of the app that is running the job.
 """
@@ -34,6 +42,10 @@ from quill.core.scribe.model import format_label, in_build_order, labels_sentenc
 QUEUE_FILE = "queue.json"
 RUNNER_LOCK_FILE = "runner.lock"
 RUNNER_STALE_S = 20.0
+#: How often the runner beats the lock and renews its job's lease.
+HEARTBEAT_S = 5.0
+#: How long a lock or claim write may wait for the queue's lock file.
+_CLAIM_WAIT_S = 1.0
 _SCHEMA = 1
 
 # Job states. "Waiting for you" states need the person; nothing pops up for them.
@@ -109,6 +121,8 @@ class Job:
     resumed: bool = False  # picked up by an app other than the one that started it
     purpose: str = ""  # "import": open as a new tab; "braille": the braille view
     password_tries: int = 0
+    runner_pid: int = 0  # the app running it now (0: nobody); see JobQueue.claim
+    lease: float = 0.0  # runner_pid's claim lasts until this time
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> Job:
@@ -232,13 +246,72 @@ class JobQueue:
         with guarded_write(self.path):
             self._write([j for j in self._read() if j.id != job_id])
 
-    def next_runnable(self) -> Job | None:
-        """The oldest job ready to run (a waiting one, or one an app left half done)."""
-        candidates = [j for j in self._read() if j.state == WAITING or j.state in ACTIVE]
+    def next_runnable(self, *, pid: int = 0, now: float | None = None) -> Job | None:
+        """The oldest job ready to run (a waiting one, or one an app left half done).
+
+        A job another live app has claimed (``runner_pid`` with a lease still
+        running) is not offered.
+        """
+        moment = time.time() if now is None else now
+        candidates = [j for j in self._read() if _runnable(j, pid, moment)]
         return min(candidates, key=lambda j: j.created) if candidates else None
+
+    def claim(self, pid: int, *, now: float | None = None) -> Job | None:
+        """Take the next runnable job for ``pid``, atomically across processes.
+
+        Under the strict lock: a lock that cannot be had claims nothing, rather
+        than risking two apps running one job.
+        """
+        try:
+            with guarded_write(self.path, timeout_s=_CLAIM_WAIT_S, strict=True):
+                moment = time.time() if now is None else now
+                jobs = self._read()
+                candidates = [j for j in jobs if _runnable(j, pid, moment)]
+                if not candidates:
+                    return None
+                job = min(candidates, key=lambda j: j.created)
+                job.runner_pid = pid
+                job.lease = moment + RUNNER_STALE_S
+                self._write(jobs)
+                return job
+        except TimeoutError:
+            return None
+
+    def renew(self, job_id: str, pid: int) -> bool:
+        """Extend ``pid``'s claim on a job. False when another app has it now."""
+        try:
+            with guarded_write(self.path, timeout_s=_CLAIM_WAIT_S, strict=True):
+                jobs = self._read()
+                job = next((j for j in jobs if j.id == job_id), None)
+                if job is None:
+                    return True  # removed: the runner finds out on its next update
+                if job.runner_pid not in (0, pid) and job.lease > time.time():
+                    return False
+                job.runner_pid = pid
+                job.lease = time.time() + RUNNER_STALE_S
+                self._write(jobs)
+                return True
+        except TimeoutError:
+            return False
+
+    def release(self, job_id: str, pid: int) -> None:
+        """Let go of ``pid``'s claim (the job finished, failed or now needs the person)."""
+
+        def _drop(job: Job) -> None:
+            if job.runner_pid == pid:
+                job.runner_pid = 0
+                job.lease = 0.0
+
+        self.update(job_id, _drop)
 
     def waiting_count(self) -> int:
         return sum(1 for j in self._read() if j.state not in FINISHED)
+
+
+def _runnable(job: Job, pid: int, now: float) -> bool:
+    if job.state != WAITING and job.state not in ACTIVE:
+        return False
+    return not (job.runner_pid and job.runner_pid != pid and job.lease > now)
 
 
 # ------------------------------------------------------------------ the runner lock
@@ -280,13 +353,18 @@ class RunnerLock:
     def acquire(self) -> bool:
         from quill.core.storage import write_json_atomic
 
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with guarded_write(self.path):
-            current = self.holder()
-            if current and current.get("pid") != self.pid:
-                return False
-            write_json_atomic(self.path, {"pid": self.pid, "app": self.app, "beat": time.time()})
-            return True
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with guarded_write(self.path, timeout_s=_CLAIM_WAIT_S, strict=True):
+                current = self.holder()
+                if current and current.get("pid") != self.pid:
+                    return False
+                write_json_atomic(
+                    self.path, {"pid": self.pid, "app": self.app, "beat": time.time()}
+                )
+                return True
+        except (TimeoutError, OSError):
+            return False
 
     def beat(self) -> bool:
         return self.acquire()
@@ -385,10 +463,12 @@ __all__ = [
     "FAILED",
     "FINISHED",
     "GONE",
+    "HEARTBEAT_S",
     "NEEDS_PAGES",
     "NEEDS_PASSWORD",
     "NEEDS_SIGNIN",
     "NEEDS_YOU",
+    "RUNNER_STALE_S",
     "SLOWED",
     "STATE_WORDS",
     "UPLOADING",

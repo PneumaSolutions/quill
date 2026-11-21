@@ -6,6 +6,13 @@ single app uploads and speaks for the whole family; when that app closes,
 another takes over and finishes the job (a job already uploaded is never
 uploaded again: the document id is in the queue file).
 
+While a job runs, a second thread beats the lock and renews the job's claim
+every :data:`~quill.core.scribe.queue.HEARTBEAT_S`, and before each step
+(upload, each conversion, each download) the runner checks it still owns
+both. An app that lost them -- it was asleep, or frozen, long enough for
+another to take over -- stops without touching the job (independent review
+Q1).
+
 For each job: upload (unless already uploaded), send the per-document
 settings, then for each format in Scribe's build order start the conversion,
 follow the channel, and download. Each change is written to the queue file
@@ -69,6 +76,15 @@ class _JobCancelled(ScribeCancelled):
         super().__init__("Stopped waiting.")
 
 
+class _LostOwnership(ScribeCancelled):
+    """Another app took the runner lock or this job's claim: stop quietly."""
+
+    code = "QUILL-SCRIBE-CANCELLED-OWNER"
+
+    def __init__(self) -> None:
+        super().__init__("Another app is running this job now.")
+
+
 class QueueRunner:
     def __init__(
         self,
@@ -104,6 +120,7 @@ class QueueRunner:
         self._milestones: dict[str, set[int]] = {}
         self._stages_said: dict[str, set[str]] = {}
         self._resumed_done: list[q.Job] = []
+        self._lost = threading.Event()
 
     # ------------------------------------------------------------ lifecycle
 
@@ -171,17 +188,51 @@ class QueueRunner:
 
     def run_once(self) -> bool:
         """Run the next job if this app may. True when a job was worked on."""
-        job = self.jobs.next_runnable()
-        if job is None:
+        pid = self.lock.pid
+        if self.jobs.next_runnable(pid=pid) is None:
             if self.lock.held_here():
                 self.lock.beat()
             return False
         if not self.lock.acquire():
             return False
-        if job.owner_pid != self.lock.pid and not job.resumed:
+        job = self.jobs.claim(pid)
+        if job is None:
+            return False
+        if job.owner_pid != pid and not job.resumed:
             job = self.jobs.update(job.id, lambda j: setattr(j, "resumed", True)) or job
-        self.run_job(job)
+        self._lost.clear()
+        done = threading.Event()
+        beater = threading.Thread(
+            target=self._heartbeat, args=(job.id, done), name="quill-scribe-beat", daemon=True
+        )
+        beater.start()
+        try:
+            self.run_job(job)
+        finally:
+            done.set()
+            beater.join(timeout=5.0)
+            if not self._lost.is_set():
+                self.jobs.release(job.id, pid)
         return True
+
+    def _heartbeat(self, job_id: str, done: threading.Event) -> None:
+        """Keep the runner lock and this job's claim alive while the job runs."""
+        while not done.wait(q.HEARTBEAT_S):
+            try:
+                kept = self.lock.beat() and self.jobs.renew(job_id, self.lock.pid)
+            except OSError:
+                kept = True  # a passing file error: the next beat tries again
+            if not kept:
+                self._lost.set()
+                return
+
+    def _check_owner(self, job: q.Job) -> None:
+        """Before each step: this app still runs the queue and owns this job."""
+        if self._lost.is_set() or self._stop.is_set():
+            raise _LostOwnership
+        if not (self.lock.beat() and self.jobs.renew(job.id, self.lock.pid)):
+            self._lost.set()
+            raise _LostOwnership
 
     # ------------------------------------------------------------ one job
 
@@ -242,6 +293,7 @@ class QueueRunner:
         return fresh
 
     def _upload(self, job: q.Job) -> None:
+        self._check_owner(job)
         self._update(job, lambda j: _set_state(j, q.UPLOADING, f"Sending {j.name}."))
         self._say("start", f"Scribe for Documents is converting {job.name}.", job)
         password = self._password(job.id)
@@ -249,6 +301,7 @@ class QueueRunner:
             document_id = self.client.create_from_url(job.source_url, password)
         else:
             document_id = self.client.create_from_file(Path(job.source_path), password)
+        self._check_owner(job)
         self._update(job, lambda j: setattr(j, "document_id", document_id))
 
     def _send_settings(self, job: q.Job) -> None:
@@ -325,6 +378,7 @@ class QueueRunner:
             return self._download(job, format_id)
         password = self._password(job.id)
         while True:
+            self._check_owner(job)
             try:
                 channel.start_conversion(wire, password)
                 break
@@ -394,6 +448,7 @@ class QueueRunner:
         return job
 
     def _download(self, job: q.Job, format_id: str) -> q.Job:
+        self._check_owner(job)
         job = self._update(
             job, lambda j: _set_state(j, q.DOWNLOADING, f"Downloading {format_label(format_id)}.")
         )
