@@ -23,6 +23,17 @@
   tools\scanner (`--scanner-tool`, or tools\scanner\pagescan.exe in the
   checkout) and the Mac build puts pagescan in the app and signs it. pagescan
   is listed in the third-party notices.
+- **Safer sign-in, scanning and downloads.** A security review of Scribe for
+  Documents and scanning (docs/design/scribe-security-review.md) made five
+  changes. The Scribe sign-in now checks a random code that comes back with
+  the browser's answer, so another program cannot end or take over your
+  sign-in. QUILL only runs its own copy of pagescan or the one you choose by
+  its full path in Options; it never runs one found elsewhere on the
+  computer. It only takes scanned pages from the folder it gave the tool. A
+  file Scribe sends can no longer be named CON, NUL or another name Windows
+  keeps for devices. Convert from a Link only accepts web addresses that
+  start with http:// or https://. About QUILL now says "Powered by Scribe for
+  Documents".
 
 ### More settings that stick: Studio, Media Player, Transcribe, Beacon, Weather, Radio and QUILL's dialogs (2026-11-20)
 
