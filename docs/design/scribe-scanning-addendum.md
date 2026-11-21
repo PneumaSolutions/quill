@@ -37,9 +37,11 @@ same Scribe offer as any other import.
   never a source id, because Windows source ids can change between runs: the
   glass when the scanner has one, else the feeder.
 - **Where QUILL finds it,** first match wins: Options > Scanning (a file or a
-  folder), `QUILL_SCANNER_TOOL`, `tools\scanner` beside an installed QUILL,
+  folder), `tools\scanner` beside an installed QUILL,
   `Contents/Resources/tools/scanner` in the Mac app, `tools/scanner` in a source
-  checkout, the data folder, then `PATH`. On Windows each place also accepts the
+  checkout, `QUILL_SCANNER_TOOL`, then the data folder. A configured path must
+  be absolute, and `PATH` and the current folder are never searched (see
+  `scribe-security-review.md`). On Windows each place also accepts the
   tool's old name, `wia-scan.exe`, so a computer set up before the rename keeps
   scanning.
 - **Bundling.** The Windows build copies `pagescan.exe` into

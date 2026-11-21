@@ -156,8 +156,8 @@ SERVICE_SPECS: tuple[SettingSpec, ...] = (
         "scanning",
         "text",
         (
-            "Where the pagescan scanner tool is (a file or its folder). Leave blank "
-            "to use the one installed with QUILL."
+            "Where the pagescan scanner tool is: the full path of the file or its "
+            "folder. Leave blank to use the one installed with QUILL."
         ),
         feature_id="core.ocr",
         keywords=("scan", "scanner", "pagescan", "wia", "tool", "path"),

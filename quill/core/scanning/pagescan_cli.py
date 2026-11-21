@@ -24,11 +24,15 @@ ignored. The tool runs with no console window (``CREATE_NO_WINDOW``, through
 thread.
 
 Where the tool is found, first match wins: the path in Options (Scanning tab,
-``scanner_tool_path``, a file or a folder), the ``QUILL_SCANNER_TOOL``
-environment variable, ``{app}/tools/scanner/`` beside an installed QUILL
-(``QUILL_APP_ROOT``), ``Contents/Resources/tools/scanner/`` in a macOS app
-(``RESOURCEPATH``), ``tools/scanner/`` in a source checkout, ``<QUILL
-data>/tools/scanner/``, then ``PATH``. In each folder ``pagescan.exe`` (on a
+``scanner_tool_path``, a file or a folder), ``{app}/tools/scanner/`` beside an
+installed QUILL (``QUILL_APP_ROOT``), ``Contents/Resources/tools/scanner/`` in
+a macOS app (``RESOURCEPATH``), ``tools/scanner/`` in a source checkout, the
+``QUILL_SCANNER_TOOL`` environment variable, then ``<QUILL
+data>/tools/scanner/``. A configured path or the variable must be absolute;
+``PATH`` and the current folder are never searched, so a stray ``pagescan``
+elsewhere can never run in its place (docs/design/scribe-security-review.md).
+The scan's answer is trusted only for files inside the folder QUILL gave it,
+since those pages may go on to OCR or to Scribe. In each folder ``pagescan.exe`` (on a
 Mac, ``pagescan``) is looked for first, then the tool's old Windows name
 ``wia-scan.exe``, so a computer set up before the rename keeps scanning. It is
 local-only: nothing here touches the network.
@@ -39,7 +43,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -86,21 +89,37 @@ def tool_names(platform: str | None = None) -> tuple[str, ...]:
     return (TOOL_STEM,)
 
 
-def _search_dirs(env: Mapping[str, str]) -> list[Path]:
-    dirs: list[Path] = []
+def _explicit(value: str) -> Path | None:
+    """A configured file or folder, only when it is an absolute path."""
+    cleaned = value.strip().strip('"')
+    if not cleaned:
+        return None
+    path = Path(cleaned)
+    return path if path.is_absolute() else None
+
+
+def _places(configured: str, env: Mapping[str, str]) -> list[tuple[Path, bool]]:
+    """Where to look, in order, each with whether it may name the file itself."""
+    places: list[tuple[Path, bool]] = []
+    chosen = _explicit(configured)
+    if chosen is not None:
+        places.append((chosen, True))
     for variable in ("QUILL_APP_ROOT", "RESOURCEPATH"):
         root = env.get(variable, "").strip()
-        if root:
-            dirs.append(Path(root) / "tools" / "scanner")
+        if root and Path(root).is_absolute():
+            places.append((Path(root) / "tools" / "scanner", False))
     # A run from source: the gitignored tools/scanner folder of the checkout.
-    dirs.append(Path(__file__).resolve().parents[3] / "tools" / "scanner")
+    places.append((Path(__file__).resolve().parents[3] / "tools" / "scanner", False))
+    variable_path = _explicit(env.get(TOOL_ENV, ""))
+    if variable_path is not None:
+        places.append((variable_path, True))
     try:
         from quill.core.paths import app_data_dir
 
-        dirs.append(app_data_dir() / "tools" / "scanner")
+        places.append((app_data_dir() / "tools" / "scanner", False))
     except Exception:  # noqa: BLE001 - no data folder: the other places still count
         pass
-    return dirs
+    return places
 
 
 def find_tool(
@@ -112,26 +131,13 @@ def find_tool(
     """The first ``pagescan`` (or legacy ``wia-scan.exe``) that exists, or ``None``."""
     env: Mapping[str, str] = os.environ if environ is None else environ
     names = tool_names(platform)
-    explicit = [
-        Path(value.strip().strip('"'))
-        for value in (configured, env.get(TOOL_ENV, ""))
-        if value.strip()
-    ]
-    for candidate in explicit:
-        if candidate.is_file():
-            return candidate
-        if candidate.is_dir():
+    for place, may_be_file in _places(configured, env):
+        if may_be_file and place.is_file():
+            return place
+        if place.is_dir():
             for name in names:
-                if (candidate / name).is_file():
-                    return candidate / name
-    for folder in _search_dirs(env):
-        for name in names:
-            if (folder / name).is_file():
-                return folder / name
-    for name in names:
-        found = shutil.which(name)
-        if found:
-            return Path(found)
+                if (place / name).is_file():
+                    return place / name
     return None
 
 
@@ -265,7 +271,7 @@ class PagescanBackend(ScannerBackend):
         stdout = self._scan_process(args, cancel_requested)
         reply = parse_reply(stdout)
         files = [Path(str(f)) for f in reply.get("files") or () if str(f).strip()]
-        files = [f for f in files if f.is_file()]
+        files = [f for f in files if f.is_file() and _inside(f, out_dir)]
         if not reply.get("ok") and not files:
             raise ScanError(_error_of(reply, "The scan did not finish."))
         if not files:
@@ -303,6 +309,14 @@ class PagescanBackend(ScannerBackend):
         if isinstance(out, bytes):
             return out.decode("utf-8", errors="replace")
         return str(out or "")
+
+
+def _inside(path: Path, folder: Path) -> bool:
+    """True when ``path`` is in ``folder``: the tool may only hand back its pages."""
+    try:
+        return path.resolve().is_relative_to(folder.resolve())
+    except OSError:
+        return False
 
 
 def _write_cancel(process: Any) -> None:

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-from pathlib import Path
 
 import pytest
 
@@ -76,7 +75,6 @@ def test_garbage_output_is_a_sentence() -> None:
 def test_a_missing_tool_says_how_to_fix_it(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv(pagescan_cli.TOOL_ENV, raising=False)
     monkeypatch.delenv("QUILL_APP_ROOT", raising=False)
-    monkeypatch.setattr(pagescan_cli.shutil, "which", lambda _name: None)
     monkeypatch.setattr("quill.core.paths.app_data_dir", lambda: tmp_path / "data")
     backend = pagescan_cli.PagescanBackend()
     with pytest.raises(scanning.ScannerToolMissing, match="Options, Scanning"):
@@ -84,7 +82,7 @@ def test_a_missing_tool_says_how_to_fix_it(monkeypatch, tmp_path) -> None:
 
 
 def test_the_tool_is_found_in_order(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr(pagescan_cli.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(pagescan_cli, "__file__", str(tmp_path / "x" / "y" / "z" / "w.py"))
     monkeypatch.setattr("quill.core.paths.app_data_dir", lambda: tmp_path / "data")
     app = tmp_path / "app" / "tools" / "scanner"
     app.mkdir(parents=True)
@@ -99,7 +97,6 @@ def test_the_tool_is_found_in_order(monkeypatch, tmp_path) -> None:
 
 
 def test_the_old_wia_scan_name_is_still_found_on_windows(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr(pagescan_cli.shutil, "which", lambda _name: None)
     monkeypatch.setattr("quill.core.paths.app_data_dir", lambda: tmp_path / "data")
     app = tmp_path / "app" / "tools" / "scanner"
     app.mkdir(parents=True)
@@ -113,7 +110,6 @@ def test_the_old_wia_scan_name_is_still_found_on_windows(monkeypatch, tmp_path) 
 
 
 def test_a_mac_app_finds_the_tool_in_its_resources(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr(pagescan_cli.shutil, "which", lambda _name: None)
     monkeypatch.setattr("quill.core.paths.app_data_dir", lambda: tmp_path / "data")
     tools = tmp_path / "Resources" / "tools" / "scanner"
     tools.mkdir(parents=True)
@@ -122,19 +118,32 @@ def test_a_mac_app_finds_the_tool_in_its_resources(monkeypatch, tmp_path) -> Non
     assert pagescan_cli.find_tool(environ=env, platform="darwin") == tools / "pagescan"
 
 
-def test_path_is_the_last_place_looked(monkeypatch, tmp_path) -> None:
+def test_path_and_relative_paths_are_never_searched(monkeypatch, tmp_path) -> None:
+    """Security review: a pagescan on PATH or in the current folder never runs."""
     monkeypatch.setattr("quill.core.paths.app_data_dir", lambda: tmp_path / "data")
-    looked = []
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "pagescan").write_bytes(b"x")
+    (tmp_path / "bin" / "pagescan").chmod(0o755)
+    monkeypatch.chdir(tmp_path / "bin")
+    monkeypatch.setattr(pagescan_cli, "__file__", str(tmp_path / "x" / "y" / "z" / "w.py"))
+    assert pagescan_cli.find_tool(environ={}, platform="darwin") is None
+    assert pagescan_cli.find_tool("pagescan", environ={}, platform="darwin") is None
+    env = {pagescan_cli.TOOL_ENV: "pagescan"}
+    assert pagescan_cli.find_tool(environ=env, platform="darwin") is None
 
-    def which(name):
-        looked.append(name)
-        return "/usr/local/bin/pagescan" if name == "pagescan" else None
 
-    monkeypatch.setattr(pagescan_cli.shutil, "which", which)
-    assert pagescan_cli.find_tool(environ={}, platform="darwin") == Path("/usr/local/bin/pagescan")
-    looked.clear()
-    pagescan_cli.find_tool(environ={}, platform="win32")
-    assert looked == ["pagescan.exe", "wia-scan.exe"]
+def test_the_bundled_tool_wins_over_the_environment_variable(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr("quill.core.paths.app_data_dir", lambda: tmp_path / "data")
+    app = tmp_path / "app" / "tools" / "scanner"
+    app.mkdir(parents=True)
+    (app / "pagescan").write_bytes(b"x")
+    other = _tool(tmp_path)
+    env = {"QUILL_APP_ROOT": str(tmp_path / "app"), pagescan_cli.TOOL_ENV: str(other)}
+    assert pagescan_cli.find_tool(environ=env, platform="darwin") == app / "pagescan"
+    env.pop("QUILL_APP_ROOT")
+    monkeypatch.setattr(pagescan_cli, "__file__", str(tmp_path / "x" / "y" / "z" / "w.py"))
+    assert pagescan_cli.find_tool(environ=env, platform="darwin") == other
 
 
 class _Process:
@@ -188,6 +197,26 @@ def test_a_scan_sends_the_contract_arguments_and_returns_pages(tmp_path) -> None
     assert "--color" in color and "600" in color
 
 
+def test_only_pages_inside_the_scan_folder_are_taken(tmp_path) -> None:
+    """Security review: the tool's answer cannot point QUILL at another file."""
+    out = tmp_path / "out"
+    out.mkdir()
+    page = out / "scan-001.png"
+    page.write_bytes(b"png")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("private")
+    reply = {"ok": True, "files": [str(secret), str(out / ".." / "secret.txt"), str(page)]}
+
+    def spawn(_args):
+        return _Process(json.dumps(reply))
+
+    backend = pagescan_cli.PagescanBackend(_tool(tmp_path), spawn=spawn, sleep=lambda _s: None)
+    assert backend.scan("dev", ScanOptions(), out) == [page]
+    reply["files"] = [str(secret)]
+    with pytest.raises(scanning.ScanError, match="no page"):
+        backend.scan("dev", ScanOptions(), out)
+
+
 def test_the_source_is_always_named_by_kind(tmp_path) -> None:
     backend = pagescan_cli.PagescanBackend(_tool(tmp_path))
 
@@ -202,7 +231,8 @@ def test_the_source_is_always_named_by_kind(tmp_path) -> None:
 
 
 def test_stderr_is_never_read_as_the_answer(tmp_path) -> None:
-    page = tmp_path / "p.png"
+    page = tmp_path / "o" / "p.png"
+    page.parent.mkdir()
     page.write_bytes(b"png")
 
     class Noisy(_Process):
@@ -219,7 +249,8 @@ def test_stderr_is_never_read_as_the_answer(tmp_path) -> None:
 
 
 def test_a_paper_jam_keeps_the_pages_that_finished(tmp_path) -> None:
-    page = tmp_path / "p1.png"
+    page = tmp_path / "o" / "p1.png"
+    page.parent.mkdir()
     page.write_bytes(b"png")
     reply = {"ok": False, "files": [str(page)], "error": "Paper jam."}
     backend = pagescan_cli.PagescanBackend(

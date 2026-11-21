@@ -286,13 +286,14 @@ to the listener.</li>
 source id, because Windows source ids can change between runs: the glass
 when the scanner has one, else the feeder.</li>
 <li><strong>Where QUILL finds it,</strong> first match wins: Options
-&gt; Scanning (a file or a folder), <code>QUILL_SCANNER_TOOL</code>,
-<code>tools\scanner</code> beside an installed QUILL,
-<code>Contents/Resources/tools/scanner</code> in the Mac app,
-<code>tools/scanner</code> in a source checkout, the data folder, then
-<code>PATH</code>. On Windows each place also accepts the tool’s old
-name, <code>wia-scan.exe</code>, so a computer set up before the rename
-keeps scanning.</li>
+&gt; Scanning (a file or a folder), <code>tools\scanner</code> beside an
+installed QUILL, <code>Contents/Resources/tools/scanner</code> in the
+Mac app, <code>tools/scanner</code> in a source checkout,
+<code>QUILL_SCANNER_TOOL</code>, then the data folder. A configured path
+must be absolute, and <code>PATH</code> and the current folder are never
+searched (see <code>scribe-security-review.md</code>). On Windows each
+place also accepts the tool’s old name, <code>wia-scan.exe</code>, so a
+computer set up before the rename keeps scanning.</li>
 <li><strong>Bundling.</strong> The Windows build copies
 <code>pagescan.exe</code> into <code>portable\tools\scanner</code>
 (<code>--scanner-tool</code>, or <code>tools\scanner\pagescan.exe</code>
