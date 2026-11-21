@@ -217,6 +217,8 @@ def _handler(fake: FakeScribe) -> type[BaseHTTPRequestHandler]:
                 return self._send(200, {})
             if path.startswith("/storage/"):
                 return self._storage(path)
+            if path.startswith("/sounds/tts-samples/"):  # public: no token
+                return self._send(200, b"ID3 sample of " + path.rsplit("/", 1)[1].encode())
             if not path.startswith("/api/") or not self._authed():
                 return None if path.startswith("/api/") else self._error(404, "not_found")
             return self._api(method, path, body)

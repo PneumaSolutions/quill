@@ -32,7 +32,7 @@ from quill.core.scribe import queue as q
 from quill.core.scribe.auth import TokenStore
 from quill.core.scribe.channel import DocumentChannel
 from quill.core.scribe.client import ScribeClient
-from quill.core.scribe.library import Library
+from quill.core.scribe.library import Library, unpack
 from quill.core.scribe.model import (
     DocumentSettings,
     ScribeBusy,
@@ -57,6 +57,7 @@ OFFLINE_SPEAK_AFTER_S = 5.0
 SLOW_DOWN_S = 60.0
 MAX_RECONNECTS = 8
 MILESTONES = (25, 50, 75)
+PASSWORD_TRIES = 3
 
 
 class _JobCancelled(ScribeCancelled):
@@ -101,6 +102,7 @@ class QueueRunner:
         self._wake = threading.Event()
         self._thread: threading.Thread | None = None
         self._milestones: dict[str, set[int]] = {}
+        self._stages_said: dict[str, set[str]] = {}
         self._resumed_done: list[q.Job] = []
 
     # ------------------------------------------------------------ lifecycle
@@ -127,10 +129,32 @@ class QueueRunner:
         self._wake.set()
 
     def give_password(self, job_id: str, password: str) -> None:
-        """Enter Password...: kept in memory only, for this app's runner."""
-        self._passwords[job_id] = password
+        """Enter Password...: in memory when this app runs the queue.
+
+        When another app holds the runner lock (PRD 7.4a: the person typed it
+        in this app's Scribe Conversions), the password goes to that app
+        through the OS secret vault, which it reads once and wipes
+        (:func:`hand_over_password`). It is never written to the queue file.
+        """
+        holder = self.lock.holder()
+        if holder and holder.get("pid") != self.lock.pid:
+            hand_over_password(self.client.store, job_id, password)
+        else:
+            self._passwords[job_id] = password
         self.jobs.update(job_id, lambda j: _set_state(j, q.WAITING, "Sending with the password."))
         self.wake()
+
+    def _password(self, job_id: str) -> str | None:
+        """This job's password: given here, or handed over by another app."""
+        if job_id not in self._passwords:
+            handed = take_handed_password(self.client.store, job_id)
+            if handed:
+                self._passwords[job_id] = handed
+        return self._passwords.get(job_id)
+
+    def _forget_password(self, job_id: str) -> None:
+        self._passwords.pop(job_id, None)
+        take_handed_password(self.client.store, job_id)  # wipes a leftover hand-over
 
     # ------------------------------------------------------------ the loop
 
@@ -163,6 +187,7 @@ class QueueRunner:
 
     def run_job(self, job: q.Job) -> None:
         self._milestones[job.id] = set()
+        self._stages_said.setdefault(job.id, set())
         try:
             if not job.document_id:
                 self._upload(job)
@@ -173,12 +198,7 @@ class QueueRunner:
         except _JobCancelled:
             return
         except ScribePasswordNeeded as exc:
-            self._needs(
-                job,
-                q.NEEDS_PASSWORD,
-                exc,
-                f"{job.name} needs its password. Open Scribe Conversions to enter it.",
-            )
+            self._password_refused(job, exc)
         except ScribeSignInRequired as exc:
             self._needs(
                 job,
@@ -224,13 +244,11 @@ class QueueRunner:
     def _upload(self, job: q.Job) -> None:
         self._update(job, lambda j: _set_state(j, q.UPLOADING, f"Sending {j.name}."))
         self._say("start", f"Scribe for Documents is converting {job.name}.", job)
-        password = self._passwords.pop(job.id, None)
+        password = self._password(job.id)
         if job.source_url:
             document_id = self.client.create_from_url(job.source_url, password)
         else:
             document_id = self.client.create_from_file(Path(job.source_path), password)
-        if password:
-            self._passwords[job.id] = password  # start_conversion needs it too
         self._update(job, lambda j: setattr(j, "document_id", document_id))
 
     def _send_settings(self, job: q.Job) -> None:
@@ -305,7 +323,7 @@ class QueueRunner:
         outputs, _locked = self.client.outputs(job.document_id)
         if any(o.format == wire and o.complete for o in outputs):
             return self._download(job, format_id)
-        password = self._passwords.get(job.id)
+        password = self._password(job.id)
         while True:
             try:
                 channel.start_conversion(wire, password)
@@ -332,7 +350,7 @@ class QueueRunner:
             elif kind == "conversion_complete":
                 if format_id is None or event_format == format_id:
                     return job
-            elif kind == "password_required" and not self._passwords.get(job.id):
+            elif kind == "password_required" and not self._password(job.id):
                 raise ScribePasswordNeeded(
                     "This document needs its password.", server_code="password_required"
                 )
@@ -340,7 +358,7 @@ class QueueRunner:
                 reason = str(event.get("reason") or "")
                 message = str(event.get("message") or "")
                 if reason == "invalid_password":
-                    self._passwords.pop(job.id, None)
+                    self._forget_password(job.id)
                     raise ScribePasswordNeeded(
                         message or "Password not accepted.", server_code=reason, wrong=True
                     )
@@ -362,7 +380,11 @@ class QueueRunner:
             j.message = f"{label}: {stage.replace('_', ' ')}, {round(progress * 100)} percent."
 
         job = self._update(job, _apply)
-        if changed and stage and stage != "complete":
+        # Each stage is said once a job: every format passes through
+        # "converting", and saying it nine times would be noise (PRD 5, SCR-POL-4).
+        said_stages = self._stages_said.setdefault(job.id, set())
+        if changed and stage and stage != "complete" and stage not in said_stages:
+            said_stages.add(stage)
             self._say("stage", q.stage_sentence(job), job)
         said = self._milestones.setdefault(job.id, set())
         for mark in MILESTONES:
@@ -377,6 +399,10 @@ class QueueRunner:
         )
         folder = Path(job.folder)
         stem = Path(job.title or job.name).stem
+        twin = {"html": "offline_html", "offline_html": "html"}.get(format_id, "")
+        if twin and twin in job.done_formats:
+            # Both come from the one offline_html download: never fetch it twice.
+            return self._update(job, partial(_mark_done, format_id=format_id, path=""))
         if format_id == "html":
             # The API does not hand out the html output itself; the offline web
             # page is the same document with its pictures, as a zip.
@@ -385,19 +411,46 @@ class QueueRunner:
         else:
             path = self.client.download(job.document_id, format_id, folder, fallback_stem=stem)
         self.library.record(job.document_id, job.title or job.name, [str(path)])
-
-        def _apply(j: q.Job) -> None:
-            j.done_formats.append(format_id)
-            j.results.append(str(path))
-            j.state = q.CONVERTING
-            j.stage = ""
-
-        return self._update(job, _apply)
+        return self._update(job, partial(_mark_done, format_id=format_id, path=str(path)))
 
     def _done(self, job: q.Job) -> None:
-        job = self._update(job, lambda j: _set_fields(j, state=q.DONE, percent=100))
-        self._passwords.pop(job.id, None)
+        job = self._update(job, lambda j: _set_fields(j, state=q.DONE, percent=100, message=""))
+        self._forget_password(job.id)
+        self._stages_said.pop(job.id, None)
         self._result(job)
+
+    def _password_refused(self, job: q.Job, exc: ScribePasswordNeeded) -> None:
+        """``password_required`` waits for the person; a wrong password counts
+        a try, and the third ends the job with Retry (PRD 7.3 part 4, 11)."""
+        if not exc.extra.get("wrong"):
+            self._needs(
+                job,
+                q.NEEDS_PASSWORD,
+                exc,
+                f"{job.name} needs its password. Open Scribe Conversions to enter it.",
+            )
+            return
+        try:
+            job = self._update(job, lambda j: setattr(j, "password_tries", j.password_tries + 1))
+        except _JobCancelled:
+            return
+        left = PASSWORD_TRIES - job.password_tries
+        if left <= 0:
+            self._finish_badly(
+                job,
+                q.FAILED,
+                exc,
+                f"Scribe for Documents could not convert {job.name}: password not accepted.",
+            )
+            return
+        tries = f"{left} {'tries' if left > 1 else 'try'} left"
+        self._needs(
+            job,
+            q.NEEDS_PASSWORD,
+            exc,
+            f"Password not accepted for {job.name}. {tries}. "
+            "Open Scribe Conversions to enter it again.",
+        )
 
     def _needs(self, job: q.Job, state: str, exc: ScribeError, sentence: str) -> None:
         try:
@@ -415,7 +468,8 @@ class QueueRunner:
             )
         except _JobCancelled:
             return
-        self._passwords.pop(job.id, None)
+        self._forget_password(job.id)
+        self._stages_said.pop(job.id, None)
         self._say("error", sentence, job)
 
 
@@ -425,28 +479,63 @@ def _set_state(job: q.Job, state: str, message: str) -> None:
         job.message = message
 
 
+def _mark_done(job: q.Job, *, format_id: str, path: str) -> None:
+    job.done_formats.append(format_id)
+    if path:
+        job.results.append(path)
+    job.state = q.CONVERTING
+    job.stage = ""
+
+
 def _set_fields(job: q.Job, **values: Any) -> None:
     for name, value in values.items():
         setattr(job, name, value)
 
 
 def _unzip_page(archive: Path, folder: Path, stem: str) -> Path:
-    """Unpack an offline web page next to itself and return its HTML page."""
+    """Unpack an offline web page next to itself and return its HTML page.
+
+    Scribe sends it as one self-contained HTML file today; a zip is unpacked."""
     if not zipfile.is_zipfile(archive):
         return archive
     target = folder / f"{stem} (web page)"
-    with zipfile.ZipFile(archive) as bundle:
-        for member in bundle.namelist():
-            resolved = (target / member).resolve()
-            if not str(resolved).startswith(str(target.resolve())):
-                continue  # never write outside the folder
-            bundle.extract(member, target)
-        pages = sorted(
-            (n for n in bundle.namelist() if n.lower().endswith((".html", ".htm"))),
-            key=lambda n: (n.count("/"), len(n)),
-        )
+    pages = sorted(
+        (n for n in unpack(archive, target) if n.lower().endswith((".html", ".htm"))),
+        key=lambda n: (n.count("/"), len(n)),
+    )
     archive.unlink(missing_ok=True)
     return target / pages[0] if pages else target
+
+
+# ------------------------------------------------------------------ hand-over
+#
+# PRD 7.4a: Enter Password... in one app's Scribe Conversions must reach the
+# app running the queue. The password crosses through the OS secret vault (the
+# same one that holds the sign-in), under the "scribe" namespace so Sign Out
+# wipes it too, and the running app deletes it the moment it reads it. It is
+# never written to the queue file or logged.
+
+
+def _handover_ref(job_id: str) -> Any:
+    from quill.core.secrets import SecretRef
+
+    return SecretRef("scribe", f"password-{job_id}")
+
+
+def hand_over_password(store: TokenStore, job_id: str, password: str) -> None:
+    store.manager.set(_handover_ref(job_id), password)
+
+
+def take_handed_password(store: TokenStore, job_id: str) -> str | None:
+    """Read a handed-over password once and wipe it; None when there is none."""
+    try:
+        ref = _handover_ref(job_id)
+        value = store.manager.get(ref)
+        if value is not None:
+            store.manager.delete(ref)
+        return value or None
+    except Exception:  # noqa: BLE001 - a locked or missing vault hands nothing over
+        return None
 
 
 cancel_message = (
@@ -463,4 +552,4 @@ def cancel_waiting(jobs: q.JobQueue, job_id: str, app: str = "QUILL") -> str:
     return cancel_message.replace("QUILL", app, 1).format(name=job.name)
 
 
-__all__ = ["QueueRunner", "cancel_waiting"]
+__all__ = ["QueueRunner", "cancel_waiting", "hand_over_password", "take_handed_password"]

@@ -48,9 +48,9 @@ FORMATS: tuple[ScribeFormat, ...] = (
     ScribeFormat("epub", "EPUB", ".epub", "html"),
     ScribeFormat("mobi", "Kindle (MOBI)", ".mobi", "html"),
     ScribeFormat("daisy", "DAISY (text and audio)", ".zip", "mp3"),
-    ScribeFormat("mp3", "MP3 audio", ".zip", "html"),
+    ScribeFormat("mp3", "MP3 audio", ".mp3", "html"),
     ScribeFormat("brf", "Braille (BRF)", ".brf", "html"),
-    ScribeFormat("offline_html", "Web page for offline reading", ".zip", "html"),
+    ScribeFormat("offline_html", "Web page for offline reading", ".html", "html"),
 )
 FORMAT_IDS: tuple[str, ...] = tuple(f.id for f in FORMATS)
 _BY_ID: dict[str, ScribeFormat] = {f.id: f for f in FORMATS}

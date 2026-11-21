@@ -335,6 +335,15 @@ class ScribeClient:
     def voice_sample_url(self, short_name: str) -> str:
         return f"{base_url()}/sounds/tts-samples/{quote(short_name, safe='')}.mp3"
 
+    def voice_sample(self, short_name: str) -> bytes:
+        """Scribe's sample MP3 of a voice (public: no token is sent; PRD 7.3)."""
+        check_allowed()
+        response = http.request("GET", self.voice_sample_url(short_name), timeout=30.0)
+        http.raise_for(response, what="fetching the voice sample")
+        if response.status != 200 or not response.body:
+            raise ScribeError("Scribe for Documents has no sample of this voice.")
+        return response.body
+
     # ------------------------------------------------------------ download
 
     def download(

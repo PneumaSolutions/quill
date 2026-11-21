@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,41 @@ def download_folder(title: str, root: str = "", *, home: Path | None = None) -> 
     """Where one document's results go: ``<root>\\<document title>``."""
     base = Path(root).expanduser() if root.strip() else default_download_root(home)
     return base / title_folder_name(Path(title).stem if "." in title else title)
+
+
+def unpack(archive: Path, target: Path) -> list[str]:
+    """Unpack a downloaded zip into ``target``; returns the member names.
+
+    A member that would land outside ``target`` is skipped (zip slip).
+    """
+    root = target.resolve()
+    with zipfile.ZipFile(archive) as bundle:
+        names = bundle.namelist()
+        for member in names:
+            if not (target / member).resolve().is_relative_to(root):
+                continue  # never write outside the folder
+            bundle.extract(member, target)
+    return names
+
+
+def daisy_navigation(archive: Path) -> Path | None:
+    """A Scribe DAISY result (a zip of a DAISY 3 book) unpacked beside itself,
+    as its navigation file (``.ncx``), which Media Player opens straight away
+    (PRD 8.3). Unpacked once: a later call finds the folder already there.
+    None when the file is not a DAISY zip."""
+    if archive.suffix.lower() == ".ncx":
+        return archive
+    if not zipfile.is_zipfile(archive):
+        return None
+    with zipfile.ZipFile(archive) as bundle:
+        if not any(n.lower().endswith(".ncx") for n in bundle.namelist()):
+            return None
+    target = archive.with_name(f"{archive.stem} (DAISY)")
+    found = sorted(target.rglob("*.ncx")) if target.is_dir() else []
+    if not found:
+        names = unpack(archive, target)
+        found = [target / n for n in sorted(names, key=len) if n.lower().endswith(".ncx")]
+    return found[0] if found and found[0].is_file() else None
 
 
 class Library:
@@ -93,6 +129,8 @@ class Library:
 
 
 __all__ = [
+    "daisy_navigation",
+    "unpack",
     "FOLDER_NAME",
     "Library",
     "default_download_root",

@@ -28,7 +28,8 @@ SCRIBE_REVIEWED_EGRESS: dict[str, str] = {
         "refresh and revoke; account and billing; upload of the file the person "
         "chose (or the link they typed); the document list, rename, trash, recover "
         "and delete; per-document and account settings and their choice lists; "
-        "human-review requests; and downloads of finished outputs (the API's 302 "
+        "human-review requests; Scribe's public sample recording of a voice, for Play Sample in "
+        "the Convert dialog (no token sent); and downloads of finished outputs (the API's 302 "
         "to presigned storage is followed without the bearer token). " + _SCRIBE_TRIGGERS
     ),
 }

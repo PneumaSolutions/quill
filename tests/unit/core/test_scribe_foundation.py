@@ -419,3 +419,104 @@ def test_the_real_websocket_connect_is_quiet(monkeypatch) -> None:
     monkeypatch.setattr(ws_client, "connect", lambda url, **kw: seen.update(kw) or "ws")
     assert channel.connect("wss://scribeit.io/socket/websocket?token=t") == "ws"
     assert seen["logger"].getEffectiveLevel() >= logging.WARNING
+
+
+# ------------------------------------------------------------------ live findings (2026-11-21)
+
+
+def test_each_stage_is_said_once_a_job(fake, store, tmp_path) -> None:
+    """Every format passes through "converting"; a nine-format job said it nine times."""
+    said = []
+    runner = _runner(fake, store, tmp_path, said)
+    runner.jobs.add([_job(tmp_path, "docx", "pdf", "brf")])
+    runner.run_once()
+    stages = [text for kind, text in said if kind == "stage"]
+    assert stages.count("Notes.pdf, converting.") == 1
+    assert stages.count("Notes.pdf, adding image descriptions.") == 1
+
+
+def test_a_wrong_password_counts_and_the_third_ends_the_job(fake, store, tmp_path) -> None:
+    said = []
+    fake.password_for_next_upload = "hunter2"
+    runner = _runner(fake, store, tmp_path, said)
+    [job] = runner.jobs.add([_job(tmp_path, "docx")])
+    runner.run_once()
+    runner.give_password(job.id, "wrong-1")
+    runner.run_once()
+    assert runner.jobs.get(job.id).state == q.NEEDS_PASSWORD
+    assert said[-1] == (
+        "needs",
+        "Password not accepted for Notes.pdf. 2 tries left. "
+        "Open Scribe Conversions to enter it again.",
+    )
+    runner.give_password(job.id, "wrong-2")
+    runner.run_once()
+    assert "1 try left" in said[-1][1]
+    runner.give_password(job.id, "wrong-3")
+    runner.run_once()
+    job = runner.jobs.get(job.id)
+    assert job.state == q.FAILED and job.error_code == "QUILL-SCRIBE-PASSWORD"
+    assert said[-1] == (
+        "error",
+        "Scribe for Documents could not convert Notes.pdf: password not accepted.",
+    )
+
+
+def test_a_password_typed_in_another_app_reaches_the_app_running_the_job(
+    fake, store, tmp_path
+) -> None:
+    """PRD 7.4a: Enter Password... in a Scribe Conversions window of an app that
+    does not hold the queue lock hands the password to the one that does."""
+    fake.password_for_next_upload = "hunter2"
+    running = _runner(fake, store, tmp_path)
+    [job] = running.jobs.add([_job(tmp_path, "docx")])
+    running.run_once()
+    assert running.jobs.get(job.id).state == q.NEEDS_PASSWORD
+    other = _runner(fake, store, tmp_path)
+    other.lock.pid = running.lock.pid + 1  # a second app: it does not hold the lock
+    other.give_password(job.id, "hunter2")
+    assert "hunter2" not in running.jobs.path.read_text(encoding="utf-8")
+    running.run_once()
+    assert running.jobs.get(job.id).state == q.DONE
+    from quill.core.scribe.runner import take_handed_password
+
+    assert take_handed_password(store, job.id) is None  # read once, then wiped
+
+
+def test_accessible_html_and_the_offline_page_are_one_download(fake, store, tmp_path) -> None:
+    results = []
+    runner = _runner(fake, store, tmp_path, results=results)
+    runner.jobs.add([_job(tmp_path, "html", "offline_html")])
+    runner.run_once()
+    [job] = results
+    assert job.done_formats == ["html", "offline_html"]
+    assert len(job.results) == 1 and job.results[0].endswith("index.html")
+    downloads = [p for m, p in fake.calls if m == "GET" and p.endswith("/download")]
+    assert len(downloads) == 1
+
+
+def test_a_daisy_result_unpacks_once_to_its_navigation(tmp_path) -> None:
+    import zipfile
+
+    from quill.core.scribe.library import daisy_navigation
+
+    archive = tmp_path / "Notes.zip"
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.writestr("Notes/dtb.ncx", "<ncx/>")
+        bundle.writestr("Notes/0.mp3", b"mp3")
+        bundle.writestr("../escape.txt", "never")
+    ncx = daisy_navigation(archive)
+    assert ncx == tmp_path / "Notes (DAISY)" / "Notes" / "dtb.ncx" and ncx.is_file()
+    assert not (tmp_path / "escape.txt").exists()
+    assert daisy_navigation(archive) == ncx
+    other = tmp_path / "page.zip"
+    with zipfile.ZipFile(other, "w") as bundle:
+        bundle.writestr("index.html", "<html/>")
+    assert daisy_navigation(other) is None
+    assert not (tmp_path / "page (DAISY)").exists()
+
+
+def test_a_voice_sample_comes_through_the_scribe_door_without_a_token(fake, store) -> None:
+    data = ScribeClient(store).voice_sample("en-US-AvaNeural")
+    assert data == b"ID3 sample of en-US-AvaNeural.mp3"
+    assert ("GET", "/sounds/tts-samples/en-US-AvaNeural.mp3") in fake.calls
