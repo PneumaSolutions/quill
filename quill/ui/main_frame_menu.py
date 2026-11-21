@@ -2141,6 +2141,8 @@ class MenuBuilderMixin:
             self._menu_label(_("&Review Last OCR Result..."), "tools.review_last_ocr"),
         )
         conversion_menu.AppendSeparator()
+        self._append_scribe_rows(conversion_menu)  # Scribe for Documents: main_frame_scribe.py
+        conversion_menu.AppendSeparator()
         conversion_menu.Append(
             self._id_install_local_ocr,
             self._menu_label(

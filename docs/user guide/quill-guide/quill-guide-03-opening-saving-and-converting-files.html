@@ -1878,6 +1878,57 @@ uploads no document. Other buttons open the provider’s website, key
 page, pricing, privacy documents, API documents and list of supported
 file types in your browser, and <strong>Copy Service Summary</strong>
 copies a description with no secrets in it, for support requests.</p>
+<h3 id="converting-with-scribe-for-documents">Converting with Scribe for
+Documents</h3>
+<p>Scribe for Documents is a cloud conversion service from Pneuma
+Solutions that turns a PDF (including a password-protected one), a scan
+or photo, a Word, RTF, OpenDocument, Excel or PowerPoint file, an EPUB,
+MOBI or text file, or a web page into an accessible format. It works
+with your own Scribe account and uses its page credits or subscription.
+Unlike the Datalab service, QUILL does not wait to offer it: you choose
+it yourself, whenever you want.</p>
+<p>The commands are in <strong>Tools &gt; Reading and Dictation &gt; OCR
+and Document Conversion</strong>:</p>
+<ul>
+<li><strong>Sign In to Scribe for Documents…</strong> opens Scribe’s own
+sign-in page in your web browser. Sign in there; Scribe then sends you
+back to QUILL, which says “Signed in to Scribe for Documents”. QUILL
+never sees your Scribe password, and keeps the sign-in in your system’s
+secure credential store, never in a settings file.</li>
+<li><strong>Convert with Scribe for Documents…</strong> asks three
+questions, each a simple list: what to convert (a file on this computer,
+the current document, or a web address), what to make, and, for anything
+other than HTML, which folder to save it in. If you are not signed in
+yet, it offers to sign you in first.</li>
+<li><strong>Sign Out of Scribe for Documents</strong> forgets the
+sign-in on this computer. Your documents stay in your Scribe
+library.</li>
+</ul>
+<p>The first choice of what to make, <strong>Accessible HTML, opened in
+QUILL for editing</strong>, opens the result as a new, unsaved document
+named after the source with “(converted)” on the end, the same way
+Import / Convert Document does. The other choices are a Word document, a
+tagged PDF, an EPUB e-book, a DAISY talking book, MP3 audio, braille
+(BRF), offline HTML and Kindle (MOBI); QUILL saves those to the folder
+you chose and tells you the file name. When you convert the current
+document and it is saved in a format Scribe reads, QUILL sends that
+file; otherwise it sends a Word copy of what you have typed, so headings
+and lists come through.</p>
+<p><strong>Every conversion asks for your consent first</strong>, in a
+window that names Scribe for Documents, says the document is kept in
+your Scribe library where you can delete it, and reminds you to think
+about private, medical, legal or financial content. As with Datalab, a
+file whose name suggests sensitive content gets an extra CAUTION line.
+There is no “don’t ask again”.</p>
+<p>While Scribe works, QUILL speaks and shows each update Scribe sends,
+such as “Scribe for Documents: HTML converting, 40 percent.” If the PDF
+is protected, QUILL asks for its password; if the password is wrong, it
+says so and asks again. The document is uploaded only once, however many
+times it asks. If your connection drops, QUILL says so and reconnects by
+itself; the conversion carries on at Scribe in the meantime. If your
+account is out of page credits, QUILL tells you, and you can buy more at
+scribeit.io. Scribe converts one document at a time, so a second
+conversion waits until the first has finished.</p>
 <h3 id="checking-and-tidying-up-after-ocr">Checking and tidying up after
 OCR</h3>
 <p><strong>Review Last OCR Result…</strong> opens a checklist for your
@@ -1893,10 +1944,11 @@ files from QUILL’s data folder and tells you what it removed. The local
 tools normally clean up after themselves. Converted results live only in
 the open, unsaved document until you choose to save.</p>
 <p><strong>OCR and Conversion Services…</strong> explains each service
-in plain words: the free local converter, the local OCR engine and the
-optional Datalab cloud service. For each it tells you what it does, what
-it is best at, whether it runs on your computer or in the cloud, what it
-costs and how it is set up right now.</p>
+in plain words: the free local converter, the local OCR engine, the
+optional Datalab cloud service and Scribe for Documents. For each it
+tells you what it does, what it is best at, whether it runs on your
+computer or in the cloud, what it costs and how it is set up right
+now.</p>
 <p>Two settings are there for unusual setups: the OCR recognition
 language (<code>ocr_language</code>, English by default) and a path to
 the engine if QUILL cannot find it (<code>tesseract_path</code>). The

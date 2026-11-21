@@ -785,6 +785,9 @@ module = [
     # gate must not depend on the extra being installed.
     "quill_glow_core",
     "quill_glow_core.*",
+    # Scribe for Documents client (scribe-client, a compiled extension with no
+    # stubs); imported lazily in core/scribe_documents.py behind a sentence.
+    "scribe_client",
     # Optional GitHub integration (quill[github]); imported lazily in github_provider.py.
     "github",
     "github.*",

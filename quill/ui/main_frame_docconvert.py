@@ -462,9 +462,20 @@ class DocConvertMixin:
             )
         else:
             cloud_status = "**Datalab cloud OCR status:** Not configured (optional)."
+        from quill.core.scribe_documents import client_id_configured, signed_in
+
+        if not client_id_configured():
+            scribe_status = "**Scribe for Documents status:** Not available in this build yet."
+        elif signed_in():
+            scribe_status = "**Scribe for Documents status:** Signed in."
+        else:
+            scribe_status = "**Scribe for Documents status:** Not signed in (optional)."
         self._html_info(
             "OCR and Document Conversion Services",
-            SERVICES_OVERVIEW_MARKDOWN + "\n\n" + local_status + "\n\n" + cloud_status + "\n",
+            SERVICES_OVERVIEW_MARKDOWN
+            + "\n\n"
+            + "\n\n".join((local_status, cloud_status, scribe_status))
+            + "\n",
         )
 
     # -------------------------------------------------------------- settings

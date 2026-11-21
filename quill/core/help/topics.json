@@ -3745,6 +3745,24 @@
     "user_guide_section": "working-with-different-document-types"
   },
   {
+    "id": "tools.scribe_convert",
+    "title": "Convert with Scribe for Documents...",
+    "body": "Convert a file, the current document, or a web address with Scribe for Documents, Pneuma Solutions' cloud conversion service, using your own Scribe account and page credits. Choose accessible HTML to open the result in QUILL for editing, or save a Word file, tagged PDF, EPUB, DAISY, MP3, braille (BRF), offline HTML or MOBI to a folder. QUILL asks your consent before every upload and speaks every status update Scribe sends. Powered by Scribe for Documents.",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "tools.scribe_sign_in",
+    "title": "Sign In to Scribe for Documents...",
+    "body": "Open Scribe for Documents' own sign-in page in your web browser. After you sign in, Scribe returns you to QUILL, which keeps the sign-in in your system's secure credential store. QUILL never sees your Scribe password.",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
+    "id": "tools.scribe_sign_out",
+    "title": "Sign Out of Scribe for Documents",
+    "body": "Forget the Scribe for Documents sign-in stored on this computer. Your documents stay in your Scribe library.",
+    "user_guide_section": "working-with-different-document-types"
+  },
+  {
     "id": "tools.run_python",
     "title": "Run Python",
     "body": "Run the current document (or selection) as a Python script in a restricted sandbox and show the output.",

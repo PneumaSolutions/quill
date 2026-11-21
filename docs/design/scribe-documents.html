@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc 3.12.1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Scribe for Documents in QUILL: design note</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      color: light-dark(#1a1a1a, #fdfdfd);
+      background-color: #fdfdfd;
+      background-color: light-dark(#fdfdfd, #1a1a1a);
+      color-scheme: light dark;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        color-scheme: light only;
+      }
+      html, body, pre, code {
+        background-color: transparent;
+      }
+      body, a, a:visited, blockquote {
+        color: black;
+      }
+      pre, code {
+        padding: 0;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a, a:visited {
+      color: inherit;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid;
+      border-color: #e6e6e6;
+      border-color: light-dark(#e6e6e6, #4c4c4c);
+      color: #606060;
+      color: light-dark(#606060, #b6b6b6);
+    }
+    code {
+      white-space: pre-wrap;
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid currentColor;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid currentColor;
+      border-bottom: 1px solid currentColor;
+    }
+    th {
+      border-top: 1px solid currentColor;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: 1.5em;}
+    div.column{flex: auto;}
+    @media screen {
+    div.columns{gap: min(4vw, 1.5em);}
+    div.column{overflow-x: auto;}
+    }
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+  </style>
+  <style>
+    /* Accessible skip link: off-screen until it receives keyboard focus. */
+    .skip-link {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      background: #ffffff;
+      color: #1a1a1a;
+      padding: 0.5em 1em;
+      border: 2px solid #1a1a1a;
+      z-index: 1000;
+    }
+    .skip-link:focus { left: 0; }
+    /* The skip link above targets main, and a focusable main needs a ring for
+       the sighted keyboard user. These pages load no external stylesheet, so it
+       has to be inline; the colour is the site theme's --focus, hardcoded
+       because there is no token here. :focus-visible, not :focus -- tabindex="-1"
+       makes main the click-focus target for every paragraph inside it, so
+       :focus would box the whole page on any ordinary click. The offset is inset
+       because main is full-bleed and an outset ring gets clipped into two
+       vertical lines. */
+    main[tabindex="-1"]:focus-visible {
+      outline: 3px solid #b8540a;
+      outline-offset: -3px;
+    }
+    /* WCAG AA overrides (>= 4.5:1 on the light code background) for the
+       low-contrast default syntax-highlight token colors. */
+    code span.al, code span.er { color: #c00000; }
+    code span.an, code span.co, code span.cv { color: #5a5a5a; }
+    code span.ss { color: #8a3a5a; }
+    /* Pandoc's own styles.html partial, injected near the top of this template,
+       ships `table { display: block; overflow-x: auto; }`. display: block takes
+       the table role out of the accessibility tree in Blink and Gecko, and the
+       row and cell roles go with it, so every rendered table reads as a flat run
+       of words -- 62 of them in QUILL Lite's user guide alone, all of them
+       keyboard reference tables, on a site whose readers are overwhelmingly
+       screen-reader users. Restoring display: table is not a preference.
+
+       The scroll affordance it was there for is given up rather than moved,
+       because Pandoc emits a bare table with no wrapper element to hang overflow
+       on -- the wrapper pattern compare.html uses is not available here. So the
+       exchange is a certain and total loss of table semantics against a possible
+       sideways page scroll on the widest tables, and the cells are taught to
+       break so that stays possible rather than likely.
+
+       This override also covers the governance pages built by
+       .github/workflows/github-pages.yml, which installs Pandoc from apt at a
+       version nobody pins -- whatever styles.html that ships, this wins. */
+    table {
+      display: table;
+      overflow-x: visible;
+    }
+    table th,
+    table td {
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+<a class="skip-link" href="#main-content">Skip to main content</a>
+<main id="main-content" tabindex="-1">
+<h1 id="scribe-for-documents-in-quill-design-note">Scribe for Documents
+in QUILL: design note</h1>
+<p>This note explains how QUILL converts documents with Scribe for
+Documents, the cloud conversion service Pneuma Solutions runs at
+scribeit.io, and why it is built the way it is. The user-facing
+description is in Chapter 3 of the user guide, under “Converting with
+Scribe for Documents”.</p>
+<h2 id="what-it-does">What it does</h2>
+<p>Three commands sit in Tools &gt; Reading and Dictation &gt; OCR and
+Document Conversion, beside the Datalab cloud tier:</p>
+<ul>
+<li><strong>Convert with Scribe for Documents…</strong> converts a file,
+the current document or a web address. Accessible HTML, the default,
+opens in a new unsaved QUILL document for editing. Word, tagged PDF,
+EPUB, DAISY, MP3, braille (BRF), offline HTML and MOBI are saved to a
+folder the person chooses.</li>
+<li><strong>Sign In to Scribe for Documents…</strong> runs OAuth 2.0
+with PKCE in the system browser.</li>
+<li><strong>Sign Out of Scribe for Documents</strong> forgets the stored
+tokens.</li>
+</ul>
+<p>None of the three has a default key. They are once-in-a-while
+commands reached from the menu or the command palette, like the other
+cloud OCR commands beside them.</p>
+<h2 id="why-a-core-feature-and-not-a-bundled-quillin">Why a core feature
+and not a bundled Quillin</h2>
+<p>The bundled transcription Quillins (Groq, ElevenLabs) only
+<em>declare</em> a provider in their manifest; the host owns every byte
+of the upload, under the network egress audit. Doing the same for Scribe
+would have meant a new contribution type (a schema change, validation,
+the model, quillin_lint rules) whose only implementation is still host
+code. A manifest with nothing in it but a declaration adds a moving part
+without moving any code out of the host.</p>
+<p>QUILL’s existing cloud document conversion, Datalab, is already a
+core feature: a wx-free client in <code>quill/core/datalab_ocr.py</code>
+and its UI in the <code>main_frame_docconvert.py</code> mixin. Scribe
+follows that shape exactly, so a reviewer who knows one knows the other.
+Scribe also needs a browser sign-in with a loopback listener, a
+secret-vault token store and a long-lived WebSocket, none of which a
+Quillin sandbox could hold.</p>
+<h2 id="where-the-code-is">Where the code is</h2>
+<ul>
+<li><code>quill/core/scribe_account.py</code> (wx-free): the client ID
+and redirect, the token store (through <code>quill.core.secrets</code>),
+the error sentences, and the authenticated client.</li>
+<li><code>quill/core/scribe_documents.py</code> (wx-free): the input and
+output format tables and <code>run_conversion</code>, which uploads,
+converts, follows the status channel and downloads. It re-exports the
+account module, so callers import one module.</li>
+<li><code>quill/core/scribe_signin.py</code> (wx-free): the one-request
+loopback listener on <code>127.0.0.1</code> and
+<code>sign_in</code>.</li>
+<li><code>quill/ui/main_frame_scribe.py</code>: the
+<code>ScribeDocumentsMixin</code> with the three commands. It asks
+questions with stock dialogs and runs every network step on the
+background task pool.</li>
+<li>Tests: <code>tests/unit/core/test_scribe_documents.py</code>,
+<code>tests/unit/core/test_scribe_signin.py</code>,
+<code>tests/unit/ui/test_main_frame_scribe.py</code>, with a fake
+<code>scribe_client</code> in <code>tests/scribe_fakes.py</code>. No
+test talks to Scribe.</li>
+</ul>
+<h2 id="the-client-and-its-dependency">The client and its
+dependency</h2>
+<p>QUILL uses the official <code>scribe-client</code> package from PyPI
+(a Rust core with Python bindings, MIT or Apache 2.0, wheels for
+Windows, macOS and Linux). It is imported lazily. If it is missing, the
+command says so in a sentence instead of failing. It is not yet in
+<code>pyproject.toml</code> or the shared Windows runtime; adding it
+there is part of getting the feature ready to ship.</p>
+<h2 id="the-client-id">The client ID</h2>
+<p>Scribe registers each app at scribeit.io/developer as a public client
+that uses PKCE and has no secret. <code>SCRIBE_CLIENT_ID</code> in
+<code>quill/core/scribe_account.py</code> holds a placeholder until
+Pneuma Solutions registers QUILL and supplies the real ID, with the
+redirect URI <code>http://127.0.0.1:47613/callback</code>. While the
+placeholder is there, every command says the build is not registered yet
+and opens nothing. The environment variable
+<code>QUILL_SCRIBE_CLIENT_ID</code> overrides it for development.</p>
+<h2 id="scribes-developer-policy-and-how-quill-meets-it">Scribe’s
+developer policy, and how QUILL meets it</h2>
+<ul>
+<li><strong>Say it is powered by Scribe for Documents.</strong> The
+format question, the consent window, the services overview and the F1
+help all say so.</li>
+<li><strong>Open the sign-in page unmodified in the system
+browser.</strong> QUILL opens exactly the address
+<code>scribe_client.AuthClient.authorization_url</code> builds, with
+Python’s <code>webbrowser</code>, and never embeds it.</li>
+<li><strong>One document at a time.</strong> A job is one file or one
+address. A second Convert while one is running is refused with a
+sentence.</li>
+<li><strong>Pass along every status update.</strong> Each distinct
+status event Scribe sends becomes a sentence, such as “Scribe for
+Documents: HTML converting, 40 percent.”, which goes to the status bar
+and is spoken. Only exact repeats are dropped.</li>
+</ul>
+<h2 id="consent-privacy-and-network-egress">Consent, privacy and network
+egress</h2>
+<ul>
+<li>A consent window opens before every conversion. It names the
+service, says the document is kept in the person’s Scribe library and
+uses their page credits, and adds the same CAUTION line as Datalab for a
+sensitive-looking file name. There is no “don’t ask again”.</li>
+<li>Tokens are stored in the OS secret vault through
+<code>quill.core.secrets</code> (namespace <code>scribe</code>), never
+in settings. Sign Out wipes the namespace.</li>
+<li>Safe Mode refuses every Scribe command.</li>
+<li>Logs carry document ids, formats and stages only.</li>
+<li><code>scribe-client</code> does its HTTPS and WebSocket work inside
+a compiled extension, so the AST egress scan cannot see it. The two
+integration points, <code>scribe_account._make_client</code> and
+<code>scribe_signin.sign_in</code>, are in <code>_NON_AST_EGRESS</code>
+(through <code>quill/tools/network_egress_entries_scribe.py</code>) with
+their rationale.</li>
+<li>The loopback listener binds <code>127.0.0.1</code> on the registered
+port, serves one request on <code>/callback</code>, never logs the
+request line (it carries the code), and on Windows asks for the port
+exclusively so another program cannot answer in its place.</li>
+</ul>
+<h2 id="status-passwords-and-lost-connections">Status, passwords and
+lost connections</h2>
+<ul>
+<li>A new document is busy with its preview at first, so starting the
+conversion waits for that to finish and then tries again.</li>
+<li>A protected PDF ends the background job with “password needed”.
+QUILL asks for the password with a native password box, then resumes
+with the same document id, so nothing is uploaded twice. A wrong
+password is reported as wrong and asked again.</li>
+<li>If the live channel drops, QUILL says so and reconnects up to five
+times with growing pauses. Each time it first asks Scribe for the
+document’s outputs, because the conversion carries on without the
+channel and may have finished meanwhile; that covers conversions longer
+than the channel’s idle limit of about 66 seconds.</li>
+<li>Out of page credits, an expired sign-in, rate limits and a damaged
+file each have their own sentence. An expired sign-in offers to sign in
+again.</li>
+</ul>
+<h2 id="accessibility">Accessibility</h2>
+<ul>
+<li>Every question is a stock control (a single-choice list, the file
+and folder boxes, a text box, a password box) run through
+<code>_show_modal_dialog</code> and registered in the dialog inventory.
+The text and password boxes carry F1 help.</li>
+<li>Menu items carry access keys that are free in their submenu (C, G
+and O). The mixin adds its own rows and registrations
+(<code>_append_scribe_rows</code>,
+<code>_register_scribe_commands</code>), so the menu and command modules
+grow by one line each.</li>
+<li>Announcements say only what the screen reader cannot know: status
+updates, the result, and errors.</li>
+<li>The page the browser shows after sign-in has a language, a title, a
+main landmark and one heading.</li>
+</ul>
+<h2 id="still-to-do-before-release">Still to do before release</h2>
+<ul>
+<li>The real client ID from Pneuma Solutions, and the redirect
+registered.</li>
+<li><code>scribe-client</code> added to <code>pyproject.toml</code>,
+<code>requirements.txt</code>, <code>uv.lock</code> and the shared
+Windows runtime inventory.</li>
+<li>A screen-reader pass on Windows with JAWS and NVDA, and on macOS
+with VoiceOver, against a real Scribe account.</li>
+<li>The Python binding does not hand back tokens it refreshes on its own
+during a long conversion. QUILL refreshes explicitly before each
+conversion and stores the result, but a token rotated mid-conversion is
+lost, which costs one extra sign-in. A small change to
+<code>scribe-client</code> (expose the current token set) would remove
+that.</li>
+</ul>
+</main>
+</body>
+</html>

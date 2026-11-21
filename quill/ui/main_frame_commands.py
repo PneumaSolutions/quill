@@ -969,6 +969,7 @@ class CommandRegistryMixin:
             self.open_ocr_service_settings,
             None,
         )
+        self._register_scribe_commands()  # Convert with Scribe: main_frame_scribe.py
         self.commands.register(
             "tools.delete_ocr_temp",
             "Delete OCR Temporary Files",

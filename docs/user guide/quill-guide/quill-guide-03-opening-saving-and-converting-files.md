@@ -1310,6 +1310,56 @@ page, pricing, privacy documents, API documents and list of supported file types
 in your browser, and **Copy Service Summary** copies a description with no
 secrets in it, for support requests.
 
+### Converting with Scribe for Documents
+
+Scribe for Documents is a cloud conversion service from Pneuma Solutions that
+turns a PDF (including a password-protected one), a scan or photo, a Word,
+RTF, OpenDocument, Excel or PowerPoint file, an EPUB, MOBI or text file, or a
+web page into an accessible format. It works with your own Scribe account and
+uses its page credits or subscription. Unlike the Datalab service, QUILL does
+not wait to offer it: you choose it yourself, whenever you want.
+
+The commands are in
+**Tools > Reading and Dictation > OCR and Document Conversion**:
+
+- **Sign In to Scribe for Documents...** opens Scribe's own sign-in page in your
+  web browser. Sign in there; Scribe then sends you back to QUILL, which says
+  "Signed in to Scribe for Documents". QUILL never sees your Scribe password,
+  and keeps the sign-in in your system's secure credential store, never in a
+  settings file.
+- **Convert with Scribe for Documents...** asks three questions, each a simple
+  list: what to convert (a file on this computer, the current document, or a
+  web address), what to make, and, for anything other than HTML, which folder
+  to save it in. If you are not signed in yet, it offers to sign you in first.
+- **Sign Out of Scribe for Documents** forgets the sign-in on this computer.
+  Your documents stay in your Scribe library.
+
+The first choice of what to make, **Accessible HTML, opened in QUILL for
+editing**, opens the result as a new, unsaved document named after the source
+with "(converted)" on the end, the same way Import / Convert Document does.
+The other choices are a Word document, a tagged PDF, an EPUB e-book, a DAISY
+talking book, MP3 audio, braille (BRF), offline HTML and Kindle (MOBI); QUILL
+saves those to the folder you chose and tells you the file name. When you
+convert the current document and it is saved in a format Scribe reads, QUILL
+sends that file; otherwise it sends a Word copy of what you have typed, so
+headings and lists come through.
+
+**Every conversion asks for your consent first**, in a window that names
+Scribe for Documents, says the document is kept in your Scribe library where
+you can delete it, and reminds you to think about private, medical, legal or
+financial content. As with Datalab, a file whose name suggests sensitive
+content gets an extra CAUTION line. There is no "don't ask again".
+
+While Scribe works, QUILL speaks and shows each update Scribe sends, such as
+"Scribe for Documents: HTML converting, 40 percent." If the PDF is
+protected, QUILL asks for its password; if the password is wrong, it says so
+and asks again. The document is uploaded only once, however many times it
+asks. If your connection drops, QUILL says so and reconnects by itself; the
+conversion carries on at Scribe in the meantime. If your account is out of
+page credits, QUILL tells you, and you can buy more at scribeit.io. Scribe
+converts one document at a time, so a second conversion waits until the first
+has finished.
+
 ### Checking and tidying up after OCR
 
 **Review Last OCR Result...** opens a checklist for your most recent conversion:
@@ -1326,8 +1376,8 @@ themselves. Converted results live only in the open, unsaved document until you
 choose to save.
 
 **OCR and Conversion Services...** explains each service in plain words: the
-free local converter, the local OCR engine and the optional Datalab cloud
-service. For each it tells you what it does, what it is best at, whether it runs
+free local converter, the local OCR engine, the optional Datalab cloud
+service and Scribe for Documents. For each it tells you what it does, what it is best at, whether it runs
 on your computer or in the cloud, what it costs and how it is set up right now.
 
 Two settings are there for unusual setups: the OCR recognition language

@@ -254,6 +254,7 @@
   "quill.ui.main_frame_rich_paragraph": "reachable",
   "quill.ui.main_frame_say_check": "reachable",
   "quill.ui.main_frame_say_commands": "reachable",
+  "quill.ui.main_frame_scribe": "reachable",
   "quill.ui.main_frame_selection": "reachable",
   "quill.ui.main_frame_sessions": "reachable",
   "quill.ui.main_frame_simple_open": "reachable",
