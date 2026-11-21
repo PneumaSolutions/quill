@@ -461,10 +461,14 @@ class QueueRunner:
         if format_id == "html":
             # The API does not hand out the html output itself; the offline web
             # page is the same document with its pictures, as a zip.
-            path = self.client.download(job.document_id, "offline_html", folder, fallback_stem=stem)
+            path = self.client.download(
+                job.document_id, "offline_html", folder, fallback_stem=stem, part_key=job.id
+            )
             path = _unzip_page(path, folder, stem)
         else:
-            path = self.client.download(job.document_id, format_id, folder, fallback_stem=stem)
+            path = self.client.download(
+                job.document_id, format_id, folder, fallback_stem=stem, part_key=job.id
+            )
         self.library.record(job.document_id, job.title or job.name, [str(path)])
         return self._update(job, partial(_mark_done, format_id=format_id, path=str(path)))
 

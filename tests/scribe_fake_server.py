@@ -99,6 +99,9 @@ class FakeScribe:
         self.password_for_next_upload = ""
         self.expire_next = False
         self.started: list[str] = []
+        self.storage_drops: list[int] = []  # per storage request: hang up after n bytes
+        self.storage_override: dict[str, bytes] = {}  # format -> the bytes storage serves
+        self.storage_requests: list[dict[str, str]] = []
         self.ws_port = 0
         self.http_port = 0
         self._token_counter = 1
@@ -246,19 +249,39 @@ def _handler(fake: FakeScribe) -> type[BaseHTTPRequestHandler]:
             return None
 
         def _storage(self, path: str) -> None:
+            """Presigned storage: ETag, Range with If-Range, 416, and scripted drops."""
+            import hashlib
+
             _, _, doc_id, fmt = path.split("/", 3)
-            data = fake.bytes_for(fake.documents[doc_id], fmt)
+            data = fake.storage_override.get(fmt) or fake.bytes_for(fake.documents[doc_id], fmt)
+            etag = '"' + hashlib.sha256(data).hexdigest()[:16] + '"'
+            fake.storage_requests.append(dict(self.headers))
             start = 0
             match = re.match(r"bytes=(\d+)-", self.headers.get("Range") or "")
-            if match:
+            if_range = self.headers.get("If-Range")
+            if match and (not if_range or if_range == etag):
                 start = int(match.group(1))
-                self._send(
-                    206,
-                    data[start:],
-                    {"Content-Range": f"bytes {start}-{len(data) - 1}/{len(data)}"},
-                )
-            else:
-                self._send(200, data)
+                if start >= len(data):
+                    self._send(416, b"", {"Content-Range": f"bytes */{len(data)}", "ETag": etag})
+                    return
+            body = data[start:]
+            status = 206 if start else 200
+            headers = {"ETag": etag}
+            if start:
+                headers["Content-Range"] = f"bytes {start}-{len(data) - 1}/{len(data)}"
+            cut = fake.storage_drops.pop(0) if fake.storage_drops else None
+            if cut is None:
+                self._send(status, body, headers)
+                return
+            # Announce the whole length, send only ``cut`` bytes, then hang up.
+            self.send_response(status)
+            for key, value in headers.items():
+                self.send_header(key, value)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body[:cut])
+            self.wfile.flush()
+            self.close_connection = True
 
         def _api(self, method: str, path: str, body: bytes) -> None:
             if path == "/api/account_info":

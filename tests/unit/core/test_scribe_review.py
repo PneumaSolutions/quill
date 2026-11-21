@@ -159,3 +159,83 @@ def test_q1_a_claim_whose_app_died_passes_on(tmp_path) -> None:
     jobs.claim(100)
     later = time.time() + q.RUNNER_STALE_S + 1
     assert jobs.claim(200, now=later).id == job.id
+
+
+# ------------------------------------------------------------------ Q5: downloads
+
+BODY = bytes(range(256)) * 40  # 10 KB, every byte value
+
+
+def _ready(fake, fmt="docx"):
+    fake.storage_override[fmt] = BODY
+    return fake.add_document("Notes", outputs={fmt: "complete"})
+
+
+def _download(store, doc, folder, key="job1"):
+    return ScribeClient(store).download(doc.id, "docx", folder, fallback_stem="Notes", part_key=key)
+
+
+def test_q5_a_stream_that_ends_early_is_resumed_not_saved_short(fake, store, tmp_path) -> None:
+    doc = _ready(fake)
+    fake.storage_drops = [1000, 3000]
+    path = _download(store, doc, tmp_path)
+    assert path.read_bytes() == BODY
+    resumed = [h for h in fake.storage_requests if "Range" in h]
+    assert [h["Range"] for h in resumed] == ["bytes=1000-", "bytes=4000-"]
+    assert all(h.get("If-Range") for h in resumed)
+    assert sorted(p.name for p in tmp_path.iterdir()) == [path.name]  # no partial left
+
+
+def test_q5_a_download_that_never_finishes_fails_and_keeps_its_partial(
+    fake, store, tmp_path
+) -> None:
+    from quill.core.scribe.model import ScribeSaveFailed
+
+    doc = _ready(fake)
+    fake.storage_drops = [500] + [0] * 20  # one slice, then nothing more, ever
+    with pytest.raises(ScribeSaveFailed, match="stopped before the end"):
+        _download(store, doc, tmp_path)
+    names = sorted(p.name for p in tmp_path.iterdir())
+    assert not any(n.endswith(".docx") for n in names)  # never renamed into place
+    partial = next(p for p in tmp_path.iterdir() if p.name.endswith(".part"))
+    assert partial.stat().st_size == 500
+    fake.storage_drops = []
+    assert _download(store, doc, tmp_path).read_bytes() == BODY  # Retry carries on
+
+
+def test_q5_a_stale_partial_is_never_spliced_in(fake, store, tmp_path) -> None:
+    doc = _ready(fake)
+    (tmp_path / "Notes.docx.job1.part").write_bytes(b"OLD-OLD-OLD")  # no record of whose
+    (tmp_path / "Notes.docx.part").write_bytes(b"OLD-OLD-OLD")  # the old naming
+    assert _download(store, doc, tmp_path).read_bytes() == BODY
+    assert "Range" not in fake.storage_requests[0]
+
+
+def test_q5_a_partial_of_a_changed_file_comes_back_whole(fake, store, tmp_path) -> None:
+    from quill.core.scribe.model import ScribeSaveFailed
+
+    doc = _ready(fake)
+    fake.storage_drops = [700] + [0] * 20
+    with pytest.raises(ScribeSaveFailed):
+        _download(store, doc, tmp_path)
+    fake.storage_drops = []
+    fake.storage_override["docx"] = b"NEW VERSION " * 500  # the document was converted again
+    path = _download(store, doc, tmp_path)
+    assert path.read_bytes() == b"NEW VERSION " * 500  # If-Range: the server sent it whole
+
+
+def test_q5_a_complete_partial_left_by_a_crash_is_finished(fake, store, tmp_path) -> None:
+    """The app stopped between the last byte and the rename: a 416 finishes it."""
+    import hashlib
+    import json as _json
+
+    doc = _ready(fake)
+
+    etag = '"' + hashlib.sha256(BODY).hexdigest()[:16] + '"'
+    (tmp_path / "Notes.docx.job1.part").write_bytes(BODY)
+    (tmp_path / "Notes.docx.job1.part.json").write_text(
+        _json.dumps({"etag": etag, "total": len(BODY)}), encoding="utf-8"
+    )
+    path = _download(store, doc, tmp_path)
+    assert path.name == "Notes.docx" and path.read_bytes() == BODY
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["Notes.docx"]
