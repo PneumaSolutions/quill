@@ -119,6 +119,8 @@ OPTIONS = {
         "objc",
         "AppKit",
         "Foundation",
+        # Scanning (quill/core/scanning/imagecapture.py) imports it lazily.
+        "ImageCaptureCore",
         "docx",
         "pdfplumber",
         "pdfminer",
