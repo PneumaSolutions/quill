@@ -55,6 +55,31 @@ def pytest_collection_modifyitems(config: object, items: list[pytest.Item]) -> N
             item.add_marker(skip)
 
 
+def _process_tree(pid: int) -> list[int]:
+    """``pid`` and every process under it, the deepest last."""
+    try:
+        import psutil
+    except ImportError:
+        return [pid]
+    try:
+        children = psutil.Process(pid).children(recursive=True)
+    except psutil.Error:
+        return [pid]
+    return [pid, *(child.pid for child in children)]
+
+
+def _stop_children(pid: int) -> None:
+    """End what the launcher started: terminating a venv launcher can leave
+    the real interpreter, and its window, running."""
+    try:
+        import psutil
+
+        for child in psutil.Process(pid).children(recursive=True):
+            child.terminate()
+    except Exception:  # noqa: BLE001 - already gone, or psutil missing
+        pass
+
+
 @dataclass
 class QuillApp:
     """A running QUILL instance plus the paths tests assert against."""
@@ -246,14 +271,23 @@ def quill_app(request: pytest.FixtureRequest) -> Iterator[QuillApp]:
         while time.monotonic() < deadline:
             if process.poll() is not None:
                 raise AssertionError(f"QUILL exited during launch with code {process.returncode}")
-            try:
-                app.connect(process=process.pid)
-                window = app.window(title_re=f".*{_TITLE_MARKER}.*")
-                window.wait("exists visible", timeout=2)
+            # A venv's python.exe is a launcher that starts the real interpreter
+            # as a child, so the window belongs to a child process: look in the
+            # launched process and every process under it. Connecting to the
+            # launcher's own pid alone is why all of this suite timed out on a
+            # venv (2026-11-21), though the window was there.
+            for pid in _process_tree(process.pid):
+                try:
+                    app.connect(process=pid)
+                    window = app.window(title_re=f".*{_TITLE_MARKER}.*")
+                    window.wait("exists visible", timeout=1)
+                    break
+                except Exception as exc:  # noqa: BLE001 - keep polling until deadline
+                    last_error = exc
+                    window = None
+            if window is not None:
                 break
-            except Exception as exc:  # noqa: BLE001 - keep polling until deadline
-                last_error = exc
-                time.sleep(0.5)
+            time.sleep(0.5)
         else:
             raise AssertionError(f"QUILL main window never appeared: {last_error}")
 
@@ -264,6 +298,7 @@ def quill_app(request: pytest.FixtureRequest) -> Iterator[QuillApp]:
         # behind "we killed it". This is the single most useful number this
         # suite can record about a window that vanished.
         died_on_its_own = process.poll()
+        _stop_children(process.pid)
         if process.poll() is None:
             process.terminate()
             try:
