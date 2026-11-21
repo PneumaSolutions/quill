@@ -215,10 +215,13 @@ class ScribeDocumentsMixin:
             if self._show_modal_dialog(dialog, title) != wx.ID_OK:
                 return
             url = str(dialog.GetValue()).strip()
-        if not url.lower().startswith(("https://", "http://")):
-            self._show_message_box(
-                "Type a link that starts with https://.", TITLE, wx.ICON_INFORMATION | wx.OK
-            )
+        from quill.core.scribe.client import check_link
+        from quill.core.scribe.model import ScribeError
+
+        try:
+            url = check_link(url)
+        except ScribeError as exc:
+            self._show_message_box(exc.message, TITLE, wx.ICON_INFORMATION | wx.OK)
             return
         self._scribe_convert([SourceInfo(url=url)])
 

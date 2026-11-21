@@ -110,11 +110,35 @@ class DocumentList:
     pages_remaining: int | None = None
 
 
+#: Names Windows keeps for devices, with or without an extension ("CON.txt").
+_RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.I)
+
+
 def safe_filename(name: str, fallback: str = "Scribe result") -> str:
-    """A server file name made safe for every file system QUILL runs on."""
+    """A server file name made safe for every file system QUILL runs on.
+
+    Path separators become ``_`` and leading dots go, so a name can never
+    leave the chosen folder (``../x``, ``C:\\x``, ``/etc/x``); a Windows
+    device name gets a leading ``_`` (docs/design/scribe-security-review.md).
+    """
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", name).strip(" .")
-    cleaned = re.sub(r"\s+", " ", cleaned)
-    return cleaned[:150] or fallback
+    cleaned = re.sub(r"\s+", " ", cleaned)[:150].strip(" .")
+    if _RESERVED.match(cleaned):
+        cleaned = f"_{cleaned}"
+    return cleaned or fallback
+
+
+def check_link(url: str) -> str:
+    """The link for Convert from a Link, trimmed; only ``http(s)://host/...``.
+
+    Scribe fetches the link itself, so this is about not sending it
+    ``file:``, ``javascript:`` or an address with no host at all.
+    """
+    link = url.strip()
+    parts = urlsplit(link)
+    if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
+        raise ScribeError("Type a link that starts with https:// and names a web address.")
+    return link
 
 
 def unique_target(folder: Path, name: str) -> Path:
@@ -233,7 +257,7 @@ class ScribeClient:
         return str(reply.get("document_id") or "")
 
     def create_from_url(self, url: str, password: str | None = None) -> str:
-        fields = {"document[url]": url}
+        fields = {"document[url]": check_link(url)}
         if password:
             fields["document[password]"] = password
         body, content_type = http.multipart(fields, {})
@@ -464,6 +488,7 @@ __all__ = [
     "Output",
     "RemoteDocument",
     "ScribeClient",
+    "check_link",
     "safe_filename",
     "unique_target",
 ]

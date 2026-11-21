@@ -14,7 +14,7 @@ import pytest
 from quill.core.scribe import auth, model
 from quill.core.scribe import queue as q
 from quill.core.scribe.channel import DocumentChannel
-from quill.core.scribe.client import ScribeClient, safe_filename, unique_target
+from quill.core.scribe.client import ScribeClient, check_link, safe_filename, unique_target
 from quill.core.scribe.library import Library, download_folder
 from quill.core.scribe.runner import QueueRunner, cancel_waiting
 from tests.scribe_fake_server import memory_store, running_fake
@@ -145,15 +145,47 @@ def test_sign_in_through_the_loopback_listener_stores_tokens(fake) -> None:
     from urllib.parse import parse_qs, urlsplit
 
     next_path = parse_qs(urlsplit(url).query)["next"][0]
-    redirect = parse_qs(urlsplit(next_path).query)["redirect_uri"][0]
+    authorize = parse_qs(urlsplit(next_path).query)
+    redirect = authorize["redirect_uri"][0]
+    state = authorize["state"][0]
     assert redirect.startswith("http://127.0.0.1:") and redirect.endswith("/callback")
+    assert len(state) >= 32
     page: list[bytes] = []
     threading.Timer(
-        0.2, lambda: page.append(urllib.request.urlopen(redirect + "?code=good-code").read())
+        0.2,
+        lambda: page.append(
+            urllib.request.urlopen(f"{redirect}?code=good-code&state={state}").read()
+        ),
     ).start()
     tokens = flow.finish(timeout=10)
     assert tokens.access_token.startswith("access-") and store.signed_in()
     assert b"You can close this tab and return to QUILL." in page[0]
+
+
+def test_a_redirect_without_the_right_state_is_refused_and_the_wait_goes_on(fake) -> None:
+    """Security review: another program calling the listener first changes nothing."""
+    import urllib.error
+    import urllib.request
+    from urllib.parse import parse_qs, urlsplit
+
+    store = memory_store(signed_in=False)
+    flow = auth.SignInFlow(store)
+    authorize = parse_qs(urlsplit(parse_qs(urlsplit(flow.start()).query)["next"][0]).query)
+    redirect, state = authorize["redirect_uri"][0], authorize["state"][0]
+    refused: list[int] = []
+
+    def attacker_then_browser() -> None:
+        for query in ("?code=evil", "?code=evil&state=wrong", "?error=access_denied"):
+            try:
+                urllib.request.urlopen(redirect + query)
+            except urllib.error.HTTPError as exc:
+                refused.append(exc.code)
+        urllib.request.urlopen(f"{redirect}?code=good-code&state={state}").read()
+
+    threading.Timer(0.2, attacker_then_browser).start()
+    tokens = flow.finish(timeout=10)
+    assert refused == [400, 400, 400]
+    assert tokens.access_token.startswith("access-")
 
 
 def test_a_refused_code_is_a_sign_in_error(fake) -> None:
@@ -520,3 +552,32 @@ def test_a_voice_sample_comes_through_the_scribe_door_without_a_token(fake, stor
     data = ScribeClient(store).voice_sample("en-US-AvaNeural")
     assert data == b"ID3 sample of en-US-AvaNeural.mp3"
     assert ("GET", "/sounds/tts-samples/en-US-AvaNeural.mp3") in fake.calls
+
+
+@pytest.mark.parametrize(
+    ("server_name", "expected"),
+    [
+        ("../../evil.docx", "_.._evil.docx"),
+        ("..\\..\\Windows\\evil.dll", "_.._Windows_evil.dll"),
+        ("/etc/passwd", "_etc_passwd"),
+        ("C:\\Users\\x.docx", "C_Users_x.docx"),
+        ("..", "Scribe result"),
+        ("CON.docx", "_CON.docx"),
+        ("nul", "_nul"),
+    ],
+)
+def test_server_file_names_never_leave_the_folder(tmp_path, server_name, expected) -> None:
+    """Security review: path traversal and device names in a download's name."""
+    name = safe_filename(server_name)
+    assert name == expected
+    target = unique_target(tmp_path, name)
+    assert target.parent == tmp_path
+
+
+@pytest.mark.parametrize(
+    "link", ["file:///C:/secret.pdf", "javascript:alert(1)", "http://", "ftp://x/y.pdf", "x.pdf"]
+)
+def test_convert_from_a_link_takes_only_web_addresses(link) -> None:
+    with pytest.raises(model.ScribeError):
+        check_link(link)
+    assert check_link("  https://example.com/a.pdf ") == "https://example.com/a.pdf"

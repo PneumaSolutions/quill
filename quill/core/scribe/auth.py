@@ -11,6 +11,13 @@ The sign-in page opens unchanged (SCR-POL-2) through ``/auth/logout?next=``,
 as Pneuma's own client does, so a browser session left from an earlier
 account cannot finish the sign-in without asking.
 
+Every sign-in sends a fresh random ``state`` with the PKCE challenge, and
+the listener only accepts a redirect that brings the same ``state`` back
+(Scribe's OAuth server, ex_oauth2_provider, echoes it on success and on
+error). A request with a wrong or missing ``state`` is answered 400 and
+ignored, so another program on this computer cannot end or hijack a
+sign-in by calling the listener first (docs/design/scribe-security-review.md).
+
 Tokens live in the OS secret vault under namespace ``scribe`` (one sign-in
 for the whole family), never in settings. An access token lasts two hours;
 QUILL refreshes it five minutes early and once on a 401. Sign Out revokes
@@ -19,9 +26,11 @@ the refresh token (RFC 7009) and wipes the namespace.
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
+import secrets
 import socket
 import sys
 import threading
@@ -238,9 +247,11 @@ class _LoopbackServer(HTTPServer):
 class LoopbackCatcher:
     """A one-request listener on ``127.0.0.1`` (any free port) for the redirect."""
 
-    def __init__(self, *, port: int = 0, app_name: str = "QUILL") -> None:
+    def __init__(self, *, port: int = 0, app_name: str = "QUILL", state: str = "") -> None:
         self._port = port
         self._app = app_name
+        #: The ``state`` the redirect must bring back; empty accepts any (tests only).
+        self.state = state
         self._server: _LoopbackServer | None = None
         self._lock = threading.Lock()
         self._result: dict[str, str] = {}
@@ -307,6 +318,11 @@ class LoopbackCatcher:
             self._respond(handler, 404, "Not found", "")
             return
         query = parse_qs(parts.query)
+        returned = (query.get("state") or [""])[0]
+        if self.state and not hmac.compare_digest(returned.encode(), self.state.encode()):
+            # Not the redirect this sign-in asked for: refuse it and keep waiting.
+            self._respond(handler, 400, "Not signed in", "This sign-in link is not valid.")
+            return
         code = (query.get("code") or [""])[0]
         error = (query.get("error_description") or query.get("error") or [""])[0]
         with self._lock:
@@ -341,15 +357,20 @@ class LoopbackCatcher:
 # ------------------------------------------------------------------ sign in / out
 
 
-def authorization_url(redirect_uri: str, challenge: str, *, locale: str = "") -> str:
+def authorization_url(
+    redirect_uri: str, challenge: str, *, locale: str = "", state: str = ""
+) -> str:
     """Scribe's sign-in page, through ``/auth/logout?next=`` (as the official client)."""
-    authorize = "/oauth/authorize?" + urlencode({
+    params = {
         "response_type": "code",
         "client_id": client_id(),
         "redirect_uri": redirect_uri,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
-    })
+    }
+    if state:
+        params["state"] = state
+    authorize = "/oauth/authorize?" + urlencode(params)
     query = {"next": authorize}
     if locale:
         query["locale"] = locale
@@ -370,14 +391,18 @@ class SignInFlow:
         app_name: str = "QUILL",
     ) -> None:
         self.store = store or TokenStore()
+        self._state = secrets.token_urlsafe(32)
         self._catcher = catcher or LoopbackCatcher(app_name=app_name)
+        self._catcher.state = self._state
         self._pkce = generate_pkce_pair()
         self.url = ""
 
     def start(self) -> str:
         check_allowed()
         self._catcher.start()  # listen before the browser opens
-        self.url = authorization_url(self._catcher.redirect_uri, self._pkce.challenge)
+        self.url = authorization_url(
+            self._catcher.redirect_uri, self._pkce.challenge, state=self._state
+        )
         return self.url
 
     def finish(

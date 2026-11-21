@@ -43,6 +43,11 @@ _RECV_SLICE_S = 1.0
 Connector = Callable[[str], Any]
 
 
+#: Scribe's channel events are small JSON; a cap stops a broken or hostile
+#: server filling memory (docs/design/scribe-security-review.md).
+_MAX_MESSAGE_BYTES = 16 * 1024 * 1024
+
+
 def socket_url(token: str, locale: str = "") -> str:
     parts = urlsplit(base_url())
     scheme = "wss" if parts.scheme == "https" else "ws"
@@ -75,7 +80,7 @@ def connect(url: str) -> Any:
             url,
             ssl=context_for(https_form),
             open_timeout=20,
-            max_size=None,
+            max_size=_MAX_MESSAGE_BYTES,
             logger=_quiet_logger(),
         )
     except OSError as exc:
